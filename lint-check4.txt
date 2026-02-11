@@ -1,0 +1,45 @@
+﻿
+> otica-vision@0.1.0 lint
+> eslint
+
+
+F:\system teste\otica-vision\src\app\estoque\page.tsx
+  62:12  warning  'itemEditando' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  62:26  warning  'setItemEditando' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+F:\system teste\otica-vision\src\app\financeiro\page.tsx
+  15:5  warning  'getDataAtual' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+  58:9  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+F:\system teste\otica-vision\src\app\financeiro\page.tsx:58:9
+  56 |         const saldoFinal = caixa.saldoInicial + totalEntradas - totalSaidas;
+  57 |
+> 58 |         setCaixa((prev) => ({
+     |         ^^^^^^^^ Avoid calling setState() directly within an effect
+  59 |             ...prev,
+  60 |             totalEntradas,
+  61 |             totalSaidas,  react-hooks/set-state-in-effect
+  64:8  warning  React Hook useEffect has a missing dependency: 'caixa.saldoInicial'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      react-hooks/exhaustive-deps
+
+F:\system teste\otica-vision\src\app\vendas\page.tsx
+  27:25  warning  'setCaixaStatus' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+F:\system teste\otica-vision\src\components\financeiro\CashSummary.tsx
+  4:17  warning  'getHoraAtual' is defined but never used  @typescript-eslint/no-unused-vars
+
+F:\system teste\otica-vision\src\components\vendas\SaleForm.tsx
+   6:5   warning  'ItemVenda' is defined but never used                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+   8:5   warning  'vendaVazia' is defined but never used                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+   9:5   warning  'Lente' is defined but never used                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+  10:5   warning  'Armacao' is defined but never used                                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+  47:8   warning  React Hook useEffect has missing dependencies: 'onUpdateVenda' and 'venda'. Either include them or remove the dependency array. If 'onUpdateVenda' changes too often, find the parent component that defines it and wrap that definition in useCallback  react-hooks/exhaustive-deps
+  61:11  warning  'getStatusColor' is assigned a value but never used                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+
+Ô£û 13 problems (1 error, 12 warnings)
+

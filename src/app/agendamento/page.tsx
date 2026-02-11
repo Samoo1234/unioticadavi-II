@@ -1,0 +1,1346 @@
+"use client";
+
+import MainLayout from "@/components/MainLayout";
+import { supabase } from "@/lib/supabase";
+import { agendaHoje, Consulta } from "@/data/mockData";
+import { ConfiguracaoHorarios } from "@/data/empresasData";
+import { RegistroFinanceiroAgendamento, TipoFinanceiroAgendamento, SituacaoFinanceiroAgendamento, PagamentoAgendamento, FormaPagamento, formasPagamento } from "@/data/financeiroData";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { formatarMoeda, parseMoeda } from "@/utils/monetary";
+import { imprimirRelatorioAgendamentoCompleto, ReportAgendamentoData } from "@/utils/reportUtils";
+import { useAuth } from "@/contexts/AuthContext";
+
+function StatusBadge({ status }: { status: string }) {
+    const cores: Record<string, string> = {
+        confirmado: "bg-green-500/20 text-green-500 border-green-500/50",
+        aguardando: "bg-yellow-500/20 text-yellow-500 border-yellow-500/50",
+        atrasado: "bg-red-500/20 text-red-500 border-red-500/50",
+        cancelado: "bg-gray-500/20 text-gray-500 border-gray-500/50",
+        atendido: "bg-blue-500/20 text-blue-500 border-blue-500/50",
+    };
+
+    const labels: Record<string, string> = {
+        confirmado: "CONFIRMADO",
+        aguardando: "AGUARDANDO",
+        atrasado: "ATRASADO",
+        cancelado: "CANCELADO",
+        atendido: "ATENDIDO",
+    };
+
+    const cor = cores[status] || "bg-gray-500/20 text-gray-400 border-gray-500/50";
+    const label = labels[status] || status?.toUpperCase() || "DESCONHECIDO";
+
+    return (
+        <span className={`px-2 py-0.5 text-xs font-bold border ${cor}`}>
+            {label}
+        </span>
+    );
+}
+
+// Gerar próximos 30 dias
+function gerarDatas(): { value: string; label: string }[] {
+    const datas = [];
+    for (let i = 0; i < 30; i++) {
+        const data = new Date();
+        data.setDate(data.getDate() + i);
+        datas.push({
+            value: data.toISOString().split("T")[0],
+            label: data.toLocaleDateString("pt-BR", {
+                weekday: "short",
+                day: "2-digit",
+                month: "2-digit",
+            }).toUpperCase(),
+        });
+    }
+    return datas;
+}
+
+// Adicionar minutos a um horário
+function adicionarMinutos(horario: string, minutos: number): string {
+    const [h, m] = horario.split(":").map(Number);
+    const totalMinutos = h * 60 + m + minutos;
+    const novaHora = Math.floor(totalMinutos / 60);
+    const novosMinutos = totalMinutos % 60;
+    return `${novaHora.toString().padStart(2, "0")}:${novosMinutos.toString().padStart(2, "0")}`;
+}
+
+// Gerar horários baseados na configuração da empresa
+function gerarHorariosDisponiveis(config: ConfiguracaoHorarios | undefined): string[] {
+    if (!config) {
+        // Horários padrão se não houver configuração
+        return [
+            "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+            "11:00", "11:30", "14:00", "14:30", "15:00", "15:30",
+            "16:00", "16:30", "17:00", "17:30",
+        ];
+    }
+
+    const horarios: string[] = [];
+
+    config.turnos
+        .filter((t) => t.ativo)
+        .forEach((turno) => {
+            let horaAtual = turno.inicio;
+            while (horaAtual < turno.fim) {
+                horarios.push(horaAtual);
+                horaAtual = adicionarMinutos(horaAtual, config.intervaloMinutos);
+            }
+        });
+
+    return horarios;
+}
+
+// Gerar datas disponíveis baseadas na configuração da empresa
+function gerarDatasDisponiveis(config: ConfiguracaoHorarios | undefined): { value: string; label: string; medico?: string; medico_id?: number }[] {
+    if (!config || config.diasDisponiveis.length === 0) {
+        // Se não houver configuração, mostrar próximos 30 dias
+        return gerarDatas();
+    }
+
+    const hoje = new Date().toISOString().split("T")[0];
+
+    return config.diasDisponiveis
+        .filter((d) => d.data >= hoje)
+        .sort((a, b) => a.data.localeCompare(b.data))
+        .map((d) => ({
+            value: d.data,
+            label: new Date(d.data + "T12:00:00").toLocaleDateString("pt-BR", {
+                weekday: "short",
+                day: "2-digit",
+                month: "2-digit",
+            }).toUpperCase(),
+            medico: d.medicoResponsavel,
+            medico_id: d.medico_id,
+        }));
+}
+
+
+function AgendamentoContent() {
+    const { profile, user } = useAuth();
+    const searchParams = useSearchParams();
+    const pacienteUrl = searchParams.get("paciente");
+
+    const [listaEmpresas, setListaEmpresas] = useState<any[]>([]);
+    const [agenda, setAgenda] = useState<Consulta[]>([]);
+    const [carregando, setCarregando] = useState(true);
+    const [mostrarForm, setMostrarForm] = useState(false);
+    const [view, setView] = useState<"agenda" | "financeiro">("agenda");
+    const [registrosFin, setRegistrosFin] = useState<RegistroFinanceiroAgendamento[]>([]);
+    const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
+    const [editandoId, setEditandoId] = useState<string | number | null>(null);
+    const [financeiroIndividualId, setFinanceiroIndividualId] = useState<string | number | null>(null);
+
+    // Filtros
+    const [filtroEmpresaId, setFiltroEmpresaId] = useState<number>(profile?.unit_id || 0);
+    const [filtroData, setFiltroData] = useState<string>(new Date().toISOString().split("T")[0]);
+
+    // Fetch empresas
+    useEffect(() => {
+        if (profile?.unit_id) {
+            setFiltroEmpresaId(profile.unit_id);
+        }
+    }, [profile]);
+
+    useEffect(() => {
+        fetchEmpresas();
+    }, []);
+
+    const fetchEmpresas = async () => {
+        const { data, error } = await supabase
+            .from('empresas')
+            .select('*')
+            .order('id');
+
+
+        if (!error && data) {
+            const adapted = data.map(e => ({
+                id: e.id,
+                nomeFantasia: e.nome_fantasia,
+                cidade: e.cidade,
+                configuracaoHorarios: e.configuracao_horarios,
+                ativo: e.ativo
+            }));
+            setListaEmpresas(adapted);
+            if (adapted.length > 0 && filtroEmpresaId === 0) {
+                // Se o perfil tiver unit_id, ele já foi setado no useEffect do profile. 
+                // Se não, e se quisermos forçar a primeira loja:
+                setFiltroEmpresaId(adapted[0].id);
+            }
+        } else {
+            console.error("DEBUG: Erro ao buscar empresas", error);
+            setMensagem({ tipo: 'erro', texto: `Fetch Error: ${JSON.stringify(error)}` });
+        }
+    };
+
+    // Fetch agendamentos
+    useEffect(() => {
+        if (filtroEmpresaId > 0 && filtroData) {
+            fetchAgendamentos();
+        }
+    }, [filtroEmpresaId, filtroData]);
+
+    const fetchFinanceiroData = async (agendamentos: Consulta[]) => {
+        if (agendamentos.length === 0) {
+            setRegistrosFin([]);
+            return;
+        }
+
+        const agendamentoIds = agendamentos.map(c => c.id);
+        const { data: finData, error } = await supabase
+            .from('financeiro_agendamentos')
+            .select('*')
+            .in('id', agendamentoIds);
+
+        if (error) {
+            console.error("Erro ao buscar dados financeiros:", error);
+            // Não sobrescrever estado se houver erro
+            return;
+        }
+
+        const novosRegistros: RegistroFinanceiroAgendamento[] = agendamentos.map(c => {
+            const extra = finData?.find(f => f.id === c.id);
+            return {
+                id: c.id,
+                pacienteNome: c.pacienteNome,
+                valorTotal: extra?.valor_total || 0,
+                tipo: extra?.tipo_financeiro || "",
+                pagamentos: extra?.pagamentos || [],
+                situacao: extra?.situacao || "",
+                observacoes: extra?.observacoes || ""
+            };
+        });
+        setRegistrosFin(novosRegistros);
+    };
+
+    const fetchAgendamentos = async () => {
+        setCarregando(true);
+        const { data, error } = await supabase
+            .from('agendamentos')
+            .select('*, pacientes(*)')
+            .eq('empresa_id', filtroEmpresaId)
+            .eq('data', filtroData)
+            .order('hora');
+
+        if (!error && data) {
+            const adapted: Consulta[] = data.map((a: any) => ({
+                id: a.id,
+                empresaId: a.empresa_id,
+                data: a.data,
+                hora: a.hora.substring(0, 5),
+                pacienteId: a.paciente_id,
+                pacienteNome: a.pacientes?.nome || 'Desconhecido',
+                tipo: a.tipo as any,
+                status: a.status as any
+            }));
+            setAgenda(adapted);
+
+            if (view === "financeiro") {
+                await fetchFinanceiroData(adapted);
+            }
+        }
+        setCarregando(false);
+    };
+
+    // Form state
+    const [formData, setFormData] = useState({
+        empresaId: 0,
+        data: "",
+        horario: "",
+        pacienteNome: "",
+        pacienteId: null as string | null,
+        telefone: "",
+    });
+
+    // Estado para autocomplete de pacientes
+    const [sugestoesPacientes, setSugestoesPacientes] = useState<{ id: string; nome: string; telefone?: string }[]>([]);
+    const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+    const [buscandoPacientes, setBuscandoPacientes] = useState(false);
+    const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
+    const [buscandoHorarios, setBuscandoHorarios] = useState(false);
+
+    // Buscar pacientes no banco (com debounce)
+    const buscarPacientes = async (termo: string) => {
+        if (termo.length < 2) {
+            setSugestoesPacientes([]);
+            setMostrarSugestoes(false);
+            return;
+        }
+
+        setBuscandoPacientes(true);
+        const { data, error } = await supabase
+            .from('pacientes')
+            .select('id, nome, telefone')
+            .ilike('nome', `%${termo}%`)
+            .limit(8);
+
+        if (!error && data) {
+            setSugestoesPacientes(data);
+            setMostrarSugestoes(data.length > 0);
+        }
+        setBuscandoPacientes(false);
+    };
+
+    // Debounce para busca
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (formData.pacienteNome && !formData.pacienteId) {
+                buscarPacientes(formData.pacienteNome);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [formData.pacienteNome]);
+
+    // Buscar horários ocupados para a data/unidade selecionada no formulário
+    useEffect(() => {
+        if (formData.empresaId && formData.data) {
+            fetchHorariosOcupados();
+        } else {
+            setHorariosOcupados([]);
+        }
+    }, [formData.empresaId, formData.data]);
+
+    const fetchHorariosOcupados = async () => {
+        setBuscandoHorarios(true);
+        try {
+            const { data, error } = await supabase
+                .from('agendamentos')
+                .select('hora')
+                .eq('empresa_id', formData.empresaId)
+                .eq('data', formData.data)
+                .neq('status', 'cancelado');
+
+            if (!error && data) {
+                // Formatar para HH:MM
+                const occupied = data.map(a => a.hora.substring(0, 5));
+
+                // Se estiver editando, permitir o próprio horário atual
+                if (editandoId) {
+                    const atual = agenda.find(c => c.id === editandoId);
+                    if (atual && atual.data === formData.data && atual.empresaId === formData.empresaId) {
+                        setHorariosOcupados(occupied.filter(h => h !== atual.hora));
+                        return;
+                    }
+                }
+
+                setHorariosOcupados(occupied);
+            }
+        } catch (err) {
+            console.error("Erro ao buscar horários ocupados:", err);
+        } finally {
+            setBuscandoHorarios(false);
+        }
+    };
+
+    // Selecionar paciente da lista
+    const handleSelecionarPaciente = (paciente: { id: string; nome: string; telefone?: string }) => {
+        setFormData({
+            ...formData,
+            pacienteNome: paciente.nome,
+            pacienteId: paciente.id,
+            telefone: paciente.telefone || formData.telefone
+        });
+        setMostrarSugestoes(false);
+        setSugestoesPacientes([]);
+    };
+
+    // Detectar paciente da URL
+    useEffect(() => {
+        if (pacienteUrl) {
+            setFormData(prev => ({ ...prev, pacienteNome: pacienteUrl }));
+            setMostrarForm(true);
+        }
+    }, [pacienteUrl]);
+
+    // Empresa selecionada
+    const empresaSelecionada = useMemo(() => {
+        return listaEmpresas.find((e) => e.id === formData.empresaId);
+    }, [formData.empresaId, listaEmpresas]);
+
+    // Unidades ativas
+    // Unidades ativas
+    const unidades = useMemo(() => {
+        return listaEmpresas
+            .filter((e) => e.ativo)
+            .map((e) => ({
+                id: e.id,
+                label: `${e.nomeFantasia} - ${e.cidade}`,
+                temHorarios: !!e.configuracaoHorarios?.diasDisponiveis?.length
+            }));
+    }, [listaEmpresas]);
+
+    // Datas disponíveis baseadas na empresa selecionada
+    const datasDisponiveis = useMemo(() => {
+        return gerarDatasDisponiveis(empresaSelecionada?.configuracaoHorarios);
+    }, [empresaSelecionada]);
+
+    // Horários disponíveis baseados na empresa selecionada
+    const horariosDisponiveis = useMemo(() => {
+        return gerarHorariosDisponiveis(empresaSelecionada?.configuracaoHorarios);
+    }, [empresaSelecionada]);
+
+    // Médico do dia selecionado
+    const medicoDoDia = useMemo(() => {
+        const diaConfig = empresaSelecionada?.configuracaoHorarios?.diasDisponiveis?.find(
+            (d: any) => d.data === formData.data
+        );
+        return {
+            nome: diaConfig?.medicoResponsavel || "",
+            id: diaConfig?.medico_id || null,
+        };
+    }, [empresaSelecionada, formData.data]);
+
+    // Agenda filtrada para a listagem
+    const agendaFiltrada = useMemo(() => {
+        return agenda.filter((c) => {
+            const bateEmpresa = filtroEmpresaId === 0 || c.empresaId === filtroEmpresaId;
+            const bateData = !filtroData || c.data === filtroData;
+            return bateEmpresa && bateData;
+        }).sort((a, b) => a.hora.localeCompare(b.hora));
+    }, [agenda, filtroEmpresaId, filtroData]);
+
+    // Empresa selecionada para o filtro (usa dados do Supabase)
+    const empresaFiltro = useMemo(() => {
+        return listaEmpresas.find((e) => e.id === filtroEmpresaId);
+    }, [filtroEmpresaId, listaEmpresas]);
+
+    // Datas disponíveis para o filtro (baseadas na loja selecionada)
+    const datasDisponiveisFiltro = useMemo(() => {
+        if (filtroEmpresaId === 0) {
+            // Se nenhuma empresa for selecionada, mostrar todas as datas que têm agendamento
+            const datasUnicas = Array.from(new Set(agenda.map(c => c.data))).sort();
+            return datasUnicas.map(d => ({
+                value: d,
+                label: new Date(d + "T00:00:00").toLocaleDateString("pt-BR", {
+                    weekday: "short",
+                    day: "2-digit",
+                    month: "2-digit",
+                }).toUpperCase(),
+                medico: undefined as string | undefined
+            }));
+        }
+        return gerarDatasDisponiveis(empresaFiltro?.configuracaoHorarios);
+    }, [empresaFiltro, agenda, filtroEmpresaId]);
+
+    const mostrarMensagem = (tipo: "sucesso" | "erro", texto: string) => {
+        setMensagem({ tipo, texto });
+        setTimeout(() => setMensagem(null), 3000);
+    };
+
+    const handleConfirmar = async (id: string | number) => {
+        const { error } = await supabase
+            .from('agendamentos')
+            .update({ status: 'confirmado' })
+            .eq('id', id);
+
+        if (!error) {
+            fetchAgendamentos();
+        }
+    };
+
+    const handleCancelar = async (id: string | number) => {
+        const { error } = await supabase
+            .from('agendamentos')
+            .update({ status: 'cancelado' })
+            .eq('id', id);
+
+        if (!error) {
+            fetchAgendamentos();
+        }
+    };
+
+    const handleReagendar = (id: string | number) => {
+        const agendamento = agenda.find(c => c.id === id);
+        if (agendamento) {
+            setFormData({
+                empresaId: agendamento.empresaId,
+                data: agendamento.data,
+                horario: agendamento.hora,
+                pacienteNome: agendamento.pacienteNome,
+                pacienteId: agendamento.pacienteId ? String(agendamento.pacienteId) : null,
+                telefone: "",
+            });
+            setEditandoId(id);
+            setMostrarForm(true);
+        }
+    };
+
+    const handleNovoAgendamento = () => {
+        setMostrarForm(true);
+        setEditandoId(null);
+        setFormData({
+            empresaId: profile?.unit_id || 0,
+            data: "",
+            horario: "",
+            pacienteNome: "",
+            pacienteId: null,
+            telefone: "",
+        });
+        setSugestoesPacientes([]);
+        setMostrarSugestoes(false);
+    };
+
+    const handleSalvarAgendamento = async () => {
+        if (!formData.empresaId || !formData.data || !formData.horario || !formData.pacienteNome) {
+            mostrarMensagem("erro", "PREENCHA TODOS OS CAMPOS OBRIGATÓRIOS");
+            return;
+        }
+
+        try {
+            // 1. Determinar pacienteId - usar existente do formData ou criar novo
+            let pacienteId = formData.pacienteId;
+
+            if (!pacienteId) {
+                // Paciente não foi selecionado do autocomplete - criar novo
+                const { data: novoPaciente, error: erroP } = await supabase
+                    .from('pacientes')
+                    .insert({
+                        nome: formData.pacienteNome.trim(),
+                        telefone: formData.telefone
+                    })
+                    .select('id')
+                    .single();
+
+                if (erroP) throw erroP;
+                pacienteId = novoPaciente.id;
+            }
+
+            // 2. Verificar conflito de horário (Double check)
+            let queryConflito = supabase
+                .from('agendamentos')
+                .select('id')
+                .eq('empresa_id', formData.empresaId)
+                .eq('data', formData.data)
+                .eq('hora', formData.horario)
+                .neq('status', 'cancelado');
+
+            if (editandoId) {
+                queryConflito = queryConflito.neq('id', editandoId);
+            }
+
+            const { data: conflitos, error: erroC } = await queryConflito;
+
+            if (erroC) throw erroC;
+            if (conflitos && conflitos.length > 0) {
+                mostrarMensagem("erro", "ESTE HORÁRIO JÁ FOI OCUPADO POR OUTRO AGENDAMENTO");
+                fetchHorariosOcupados(); // Atualizar lista de ocupados
+                return;
+            }
+
+            // 3. Salvar Agendamento
+            if (editandoId) {
+                const { error } = await supabase
+                    .from('agendamentos')
+                    .update({
+                        empresa_id: formData.empresaId,
+                        data: formData.data,
+                        hora: formData.horario,
+                        medico_id: medicoDoDia.id,
+                        status: "aguardando"
+                    })
+                    .eq('id', editandoId);
+
+                if (error) throw error;
+                mostrarMensagem("sucesso", "AGENDAMENTO ATUALIZADO COM SUCESSO");
+            } else {
+                const { error } = await supabase
+                    .from('agendamentos')
+                    .insert({
+                        paciente_id: pacienteId,
+                        empresa_id: formData.empresaId,
+                        data: formData.data,
+                        hora: formData.horario,
+                        tipo: "Consulta",
+                        medico_id: medicoDoDia.id,
+                        status: "aguardando"
+                    });
+
+                if (error) throw error;
+                mostrarMensagem("sucesso", "AGENDAMENTO CRIADO COM SUCESSO");
+            }
+
+            // 3. Finalizar
+            fetchAgendamentos();
+            setMostrarForm(false);
+            setEditandoId(null);
+            setFormData({ empresaId: 0, data: "", horario: "", pacienteNome: "", pacienteId: null, telefone: "" });
+
+        } catch (error: any) {
+            console.error("Erro ao salvar:", error);
+            mostrarMensagem("erro", "ERRO AO SALVAR AGENDAMENTO: " + error.message);
+        }
+    };
+
+    const handleCancelarForm = () => {
+        setMostrarForm(false);
+        setFormData({ empresaId: 0, data: "", horario: "", pacienteNome: "", pacienteId: null, telefone: "" });
+    };
+
+    const handleAbrirFinanceiro = async () => {
+        setFinanceiroIndividualId(null);
+        // Filtrar agendamentos cancelados - não devem aparecer no financeiro
+        const agendamentosAtivos = agendaFiltrada.filter(c => c.status !== "cancelado");
+        await fetchFinanceiroData(agendamentosAtivos);
+        setView("financeiro");
+    };
+
+    const handleAbrirFinanceiroIndividual = async (consulta: Consulta) => {
+        setFinanceiroIndividualId(consulta.id);
+        await fetchFinanceiroData([consulta]);
+        setView("financeiro");
+    };
+
+    const handleAddPagamento = (registroId: string | number) => {
+        setRegistrosFin(prev => prev.map(reg => {
+            if (reg.id === registroId) {
+                return {
+                    ...reg,
+                    pagamentos: [...reg.pagamentos, { forma: "Dinheiro", valor: 0 }]
+                };
+            }
+            return reg;
+        }));
+    };
+
+    const handleRemovePagamento = (registroId: string | number, index: number) => {
+        setRegistrosFin(prev => prev.map(reg => {
+            if (reg.id === registroId) {
+                const novosPagamentos = [...reg.pagamentos];
+                novosPagamentos.splice(index, 1);
+                return { ...reg, pagamentos: novosPagamentos };
+            }
+            return reg;
+        }));
+    };
+
+    const handleUpdatePagamento = (registroId: string | number, index: number, field: keyof PagamentoAgendamento, value: any) => {
+        setRegistrosFin(prev => prev.map(reg => {
+            if (reg.id === registroId) {
+                const novosPagamentos = [...reg.pagamentos];
+                novosPagamentos[index] = { ...novosPagamentos[index], [field]: value };
+                return { ...reg, pagamentos: novosPagamentos };
+            }
+            return reg;
+        }));
+    };
+
+    const handleUpdateRegistro = (registroId: string | number, field: keyof RegistroFinanceiroAgendamento, value: any) => {
+        setRegistrosFin(prev => prev.map(reg => {
+            if (reg.id === registroId) {
+                return { ...reg, [field]: value };
+            }
+            return reg;
+        }));
+    };
+
+    const handleSalvarFinanceiro = async (registroId: string | number) => {
+        const registro = registrosFin.find(r => r.id === registroId);
+        if (!registro) return;
+
+        try {
+            const { data: savedData, error } = await supabase
+                .from('financeiro_agendamentos')
+                .upsert({
+                    id: registroId,
+                    valor_total: registro.valorTotal,
+                    tipo_financeiro: registro.tipo,
+                    situacao: registro.situacao,
+                    observacoes: registro.observacoes,
+                    pagamentos: registro.pagamentos
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Atualizar estado com dados confirmados do banco
+            setRegistrosFin(prev => prev.map(reg => {
+                if (reg.id === registroId && savedData) {
+                    return {
+                        ...reg,
+                        valorTotal: savedData.valor_total,
+                        tipo: savedData.tipo_financeiro,
+                        situacao: savedData.situacao,
+                        observacoes: savedData.observacoes,
+                        pagamentos: savedData.pagamentos
+                    };
+                }
+                return reg;
+            }));
+
+            mostrarMensagem("sucesso", "REGISTRO FINANCEIRO SALVO COM SUCESSO");
+        } catch (error: any) {
+            console.error("Erro ao salvar financeiro:", error);
+            mostrarMensagem("erro", "ERRO AO SALVAR FINANCEIRO: " + error.message);
+        }
+    };
+
+    const handleImprimirAgendamentoCompleto = () => {
+        const tipos: TipoFinanceiroAgendamento[] = ["Particular", "Convênio", "Campanha", "Exames", "Revisão"];
+        const resumoPorTipo = tipos.map(t => {
+            const filtrados = registrosFin.filter(r => r.tipo === t);
+            return {
+                tipo: t,
+                qtd: filtrados.length,
+                total: filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0)
+            };
+        }).filter(t => t.qtd > 0);
+
+        const formas: FormaPagamento[] = ["Dinheiro", "Cartao Debito", "Cartao Credito", "PIX", "Boleto", "Outros"];
+        const resumoPorPagamento = formas.map(f => {
+            let count = 0;
+            let total = 0;
+            registrosFin.forEach(r => {
+                const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
+                if (pagamentosDessaForma.length > 0) {
+                    count += pagamentosDessaForma.length;
+                    total += pagamentosDessaForma.reduce((acc, p) => acc + p.valor, 0);
+                }
+            });
+            return { forma: f, qtd: count, total: total };
+        }).filter(f => f.qtd > 0);
+
+        const dataRelatorio: ReportAgendamentoData = {
+            titulo: "RESUMO DE AGENDAMENTO FINANCEIRO",
+            data: new Date(filtroData + "T12:00:00").toLocaleDateString('pt-BR'),
+            unidade: empresaFiltro?.nomeFantasia || "TODAS AS UNIDADES",
+            operador: "ADMIN",
+            medico: medicoDoDia.nome || "",
+            resumoPorTipo,
+            resumoPorPagamento,
+            registros: registrosFin.map(r => ({
+                pacienteNome: r.pacienteNome,
+                valorTotal: r.valorTotal,
+                tipo: r.tipo || "",
+                pagamentos: r.pagamentos,
+                situacao: r.situacao || "",
+                observacoes: r.observacoes
+            }))
+        };
+
+        imprimirRelatorioAgendamentoCompleto(dataRelatorio);
+    };
+
+    const getDiaSemana = (dataStr: string) => {
+        const data = new Date(dataStr + "T12:00:00");
+        return data.toLocaleDateString("pt-BR", { weekday: "long" }).replace(/^\w/, (c) => c.toUpperCase());
+    };
+
+    return (
+        <MainLayout>
+            <div className="space-y-6">
+                {/* Título */}
+                <div className="border-b border-gray-800 pb-4 flex items-center justify-between">
+                    <div>
+                        <h1 className="text-xl font-bold tracking-wide text-white">
+                            {view === "agenda" ? "AGENDAMENTO" : financeiroIndividualId ? `Financeiro - ${registrosFin[0]?.pacienteNome || 'Paciente'}` : `Registros Financeiros - ${getDiaSemana(filtroData)}`}
+                        </h1>
+                        <p className="text-sm text-gray-500 mt-1">
+                            {view === "agenda" ? "Controle de consultas e exames" : financeiroIndividualId ? "Lançamento financeiro do paciente" : "Lançamento financeiro diário"}
+                        </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                        {view === "agenda" && !mostrarForm && profile?.roles?.name === 'Administrador' && (
+                            <button
+                                onClick={handleAbrirFinanceiro}
+                                className="px-4 py-2 bg-blue-900 border border-blue-700 text-sm font-medium text-white hover:bg-blue-800"
+                            >
+                                FINANCEIRO DO DIA
+                            </button>
+                        )}
+                        {view === "financeiro" && !financeiroIndividualId && (
+                            <button
+                                onClick={handleImprimirAgendamentoCompleto}
+                                className="px-4 py-2 bg-green-900 border border-green-700 text-sm font-medium text-white hover:bg-green-800"
+                            >
+                                IMPRIMIR RESUMO COMPLETO
+                            </button>
+                        )}
+                        {!mostrarForm ? (
+                            view === "agenda" ? (
+                                <button
+                                    onClick={handleNovoAgendamento}
+                                    className="px-4 py-2 bg-gray-800 border border-gray-700 text-sm font-medium text-white hover:bg-gray-700"
+                                >
+                                    + NOVO AGENDAMENTO
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        setView("agenda");
+                                        setFinanceiroIndividualId(null);
+                                    }}
+                                    className="px-4 py-2 bg-gray-800 border border-gray-700 text-sm font-medium text-white hover:bg-gray-700"
+                                >
+                                    ← VOLTAR
+                                </button>
+                            )
+                        ) : (
+                            <button
+                                onClick={handleCancelarForm}
+                                className="px-4 py-2 bg-gray-800 border border-gray-700 text-sm font-medium text-white hover:bg-gray-700"
+                            >
+                                ← VOLTAR
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* Mensagem */}
+                {mensagem && (
+                    <div className={`px-4 py-2 text-sm font-medium ${mensagem.tipo === "sucesso"
+                        ? "bg-green-900/50 border border-green-700 text-green-400"
+                        : "bg-red-900/50 border border-red-700 text-red-400"
+                        }`}>
+                        {mensagem.texto}
+                    </div>
+                )}
+
+                {/* Formulário de Novo Agendamento */}
+                {mostrarForm && (
+                    <div className="bg-gray-900 border border-gray-800 p-4">
+                        <div className="text-xs font-bold text-gray-400 mb-4 pb-2 border-b border-gray-700">
+                            {editandoId ? "REAGENDAR ATENDIMENTO" : "NOVO AGENDAMENTO"}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                            {/* Cidade/Unidade */}
+                            <div>
+                                <label htmlFor="unidade" className="text-xs text-gray-500 block mb-1">
+                                    UNIDADE <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    id="unidade"
+                                    value={formData.empresaId}
+                                    disabled={!!profile?.unit_id}
+                                    onChange={(e) => setFormData({ ...formData, empresaId: Number(e.target.value), data: "", horario: "" })}
+                                    className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${profile?.unit_id ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                >
+                                    {!profile?.unit_id && <option value={0}>Selecione uma unidade</option>}
+                                    {unidades.map((u) => (
+                                        <option key={u.id} value={u.id}>
+                                            {u.label} {u.temHorarios ? "✓" : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Data */}
+                            <div>
+                                <label htmlFor="data" className="text-xs text-gray-500 block mb-1">
+                                    DATA <span className="text-red-500">*</span>
+                                    {medicoDoDia.nome && (
+                                        <span className="text-green-500 ml-2">({medicoDoDia.nome})</span>
+                                    )}
+                                </label>
+                                <select
+                                    id="data"
+                                    value={formData.data}
+                                    onChange={(e) => setFormData({ ...formData, data: e.target.value, horario: "" })}
+                                    className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${!formData.empresaId ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    disabled={!formData.empresaId}
+                                >
+                                    <option value="">
+                                        {formData.empresaId ? "Selecione uma data" : "Selecione a unidade primeiro"}
+                                    </option>
+                                    {datasDisponiveis.map((d) => (
+                                        <option key={d.value} value={d.value}>
+                                            {d.label} {d.medico ? `(${d.medico})` : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Horário */}
+                            <div>
+                                <label htmlFor="horario" className="text-xs text-gray-500 block mb-1">
+                                    HORÁRIO <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    id="horario"
+                                    value={formData.horario}
+                                    onChange={(e) => setFormData({ ...formData, horario: e.target.value })}
+                                    className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${!formData.data || buscandoHorarios ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    disabled={!formData.data || buscandoHorarios}
+                                >
+                                    <option value="">
+                                        {buscandoHorarios ? "Buscando disponibilidade..." : formData.data ? "Selecione um horário" : "Selecione a data primeiro"}
+                                    </option>
+                                    {horariosDisponiveis.map((h) => {
+                                        const ocupado = horariosOcupados.includes(h);
+                                        return (
+                                            <option key={h} value={h} disabled={ocupado}>
+                                                {h} {ocupado ? "(OCUPADO)" : ""}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
+
+                            {/* Nome do Paciente */}
+                            <div className="relative">
+                                <label htmlFor="pacienteNome" className="text-xs text-gray-500 block mb-1">
+                                    NOME DO PACIENTE <span className="text-red-500">*</span>
+                                    {formData.pacienteId && (
+                                        <span className="text-green-500 ml-2">(Paciente existente)</span>
+                                    )}
+                                    {buscandoPacientes && (
+                                        <span className="text-yellow-500 ml-2">Buscando...</span>
+                                    )}
+                                </label>
+                                <input
+                                    id="pacienteNome"
+                                    autoComplete="off"
+                                    type="text"
+                                    value={formData.pacienteNome}
+                                    onChange={(e) => {
+                                        setFormData({ ...formData, pacienteNome: e.target.value, pacienteId: null });
+                                    }}
+                                    onFocus={() => {
+                                        if (sugestoesPacientes.length > 0) setMostrarSugestoes(true);
+                                    }}
+                                    onBlur={() => {
+                                        // Delay para permitir clique na sugestão
+                                        setTimeout(() => setMostrarSugestoes(false), 200);
+                                    }}
+                                    placeholder="Digite o nome do paciente"
+                                    className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${!formData.horario ? 'opacity-70 cursor-pointer' : ''}`}
+                                />
+                                {/* Dropdown de sugestões */}
+                                {mostrarSugestoes && sugestoesPacientes.length > 0 && (
+                                    <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 max-h-48 overflow-y-auto">
+                                        {sugestoesPacientes.map((paciente) => (
+                                            <div
+                                                key={paciente.id}
+                                                onClick={() => handleSelecionarPaciente(paciente)}
+                                                className="px-3 py-2 cursor-pointer hover:bg-gray-800 border-b border-gray-800 last:border-0"
+                                            >
+                                                <div className="text-sm text-white">{paciente.nome}</div>
+                                                {paciente.telefone && (
+                                                    <div className="text-xs text-gray-500">{paciente.telefone}</div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {!formData.pacienteId && formData.pacienteNome.length >= 2 && !buscandoPacientes && sugestoesPacientes.length === 0 && (
+                                    <div className="text-xs text-yellow-500 mt-1">
+                                        Novo paciente - será cadastrado automaticamente
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Telefone */}
+                            <div>
+                                <label htmlFor="telefone" className="text-xs text-gray-500 block mb-1">TELEFONE</label>
+                                <input
+                                    id="telefone"
+                                    type="tel"
+                                    value={formData.telefone}
+                                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                                    placeholder="(00) 00000-0000"
+                                    className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${!formData.horario ? 'opacity-70 cursor-pointer' : ''}`}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-gray-700 flex gap-3">
+                            <button
+                                onClick={handleSalvarAgendamento}
+                                className="px-4 py-2 bg-green-700 border border-green-600 text-sm font-medium text-white hover:bg-green-600"
+                            >
+                                {editandoId ? "CONFIRMAR REAGENDAMENTO" : "CONFIRMAR AGENDAMENTO"}
+                            </button>
+                            <button
+                                onClick={handleCancelarForm}
+                                className="px-4 py-2 bg-gray-800 border border-gray-600 text-sm font-medium text-white hover:bg-gray-700"
+                            >
+                                CANCELAR
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Resumo */}
+                {view === "agenda" && (
+                    <div className="flex gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-green-500"></span>
+                            <span className="text-gray-400">
+                                Confirmadas: {agendaFiltrada.filter((c) => c.status === "confirmado").length}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-yellow-500"></span>
+                            <span className="text-gray-400">
+                                Aguardando: {agendaFiltrada.filter((c) => c.status === "aguardando").length}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-red-500"></span>
+                            <span className="text-gray-400">
+                                Atrasadas: {agendaFiltrada.filter((c) => c.status === "atrasado").length}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
+                {!mostrarForm && view === "agenda" && (
+                    <div className="flex flex-wrap gap-4 items-end bg-gray-900 border border-gray-800 p-4">
+                        <div className="w-64">
+                            <label className="text-xs text-gray-500 block mb-1">FILTRAR POR UNIDADE</label>
+                            <select
+                                value={filtroEmpresaId}
+                                disabled={!!profile?.unit_id}
+                                onChange={(e) => {
+                                    setFiltroEmpresaId(Number(e.target.value));
+                                }}
+                                className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${profile?.unit_id ? 'opacity-70 cursor-not-allowed' : ''}`}
+                            >
+                                {!profile?.unit_id && <option value={0}>Todas as unidades</option>}
+                                {unidades.map((u) => (
+                                    <option key={u.id} value={u.id}>{u.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="w-56">
+                            <label className="text-xs text-gray-500 block mb-1">FILTRAR POR DATA</label>
+                            <select
+                                value={filtroData}
+                                onChange={(e) => setFiltroData(e.target.value)}
+                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                            >
+                                <option value="">Selecione uma data</option>
+                                {datasDisponiveisFiltro.map((d) => (
+                                    <option key={d.value} value={d.value}>
+                                        {d.label} {d.medico ? `(${d.medico})` : ""}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <button
+                            onClick={() => {
+                                if (!profile?.unit_id) setFiltroEmpresaId(0);
+                                setFiltroData(new Date().toISOString().split("T")[0]);
+                            }}
+                            className="px-3 py-1.5 bg-gray-800 border border-gray-700 text-xs text-gray-400 hover:text-white"
+                        >
+                            LIMPAR FILTROS
+                        </button>
+                    </div>
+                )}
+
+                {/* Tabela de Agendamento */}
+                {view === "agenda" ? (
+                    <div className="bg-gray-900 border border-gray-800">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-gray-800 text-left">
+                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-20">
+                                        HORA
+                                    </th>
+                                    <th className="px-4 py-3 text-xs font-medium text-gray-500">
+                                        PACIENTE
+                                    </th>
+                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-28">
+                                        TIPO
+                                    </th>
+                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-32">
+                                        STATUS
+                                    </th>
+                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-72">
+                                        AÇÕES
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {carregando ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">
+                                            Carregando agendamentos...
+                                        </td>
+                                    </tr>
+                                ) : agendaFiltrada.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">
+                                            Nenhum agendamento encontrado para os filtros selecionados.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    agendaFiltrada.map((consulta) => (
+                                        <tr
+                                            key={consulta.id}
+                                            className={`border-b border-gray-800/50 ${consulta.status === "cancelado" ? "opacity-50" : ""
+                                                }`}
+                                        >
+                                            <td className="px-4 py-3 text-sm font-mono text-white">
+                                                {consulta.hora}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-300">
+                                                {consulta.pacienteNome}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm text-gray-400">
+                                                {consulta.tipo}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <StatusBadge status={consulta.status} />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {consulta.status !== "cancelado" && (
+                                                    <div className="flex gap-1">
+                                                        {profile?.roles?.name === 'Administrador' && (
+                                                            <button
+                                                                onClick={() => handleAbrirFinanceiroIndividual(consulta)}
+                                                                className="px-2 py-1 text-xs font-medium text-blue-500 border border-blue-500/50 hover:bg-blue-500/10"
+                                                                title="Abrir financeiro deste paciente"
+                                                            >
+                                                                FINANCEIRO
+                                                            </button>
+                                                        )}
+                                                        {consulta.status !== "confirmado" && (
+                                                            <button
+                                                                onClick={() => handleConfirmar(consulta.id)}
+                                                                className="px-2 py-1 text-xs font-medium text-green-500 border border-green-500/50 hover:bg-green-500/10"
+                                                            >
+                                                                CONFIRMAR
+                                                            </button>
+                                                        )}
+                                                        {consulta.status !== "confirmado" && (
+                                                            <button
+                                                                onClick={() => handleReagendar(consulta.id)}
+                                                                className="px-2 py-1 text-xs font-medium text-yellow-500 border border-yellow-500/50 hover:bg-yellow-500/10"
+                                                            >
+                                                                REAGENDAR
+                                                            </button>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleCancelar(consulta.id)}
+                                                            className="px-2 py-1 text-xs font-medium text-red-500 border border-red-500/50 hover:bg-red-500/10"
+                                                        >
+                                                            CANCELAR
+                                                        </button>
+                                                    </div>
+                                                )}
+                                                {consulta.status === "cancelado" && (
+                                                    <span className="text-xs text-gray-500">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                ) : (
+                    /* Tabela Financeira */
+                    <div className="bg-gray-900 border border-gray-800 overflow-x-auto">
+                        <table className="w-full min-w-[1200px]">
+                            <thead>
+                                <tr className="border-b border-gray-800 text-left bg-gray-800/30">
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase">Cliente</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase w-32">R$</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase w-40">Tipo</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase w-80">Forma de Pagamento</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase w-40">Situação</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase">Observações</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase w-32 text-center">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {registrosFin.map((reg) => {
+                                    const totalPagamentos = reg.pagamentos.reduce((acc, p) => acc + p.valor, 0);
+
+                                    return (
+                                        <tr key={reg.id} className="border-b border-gray-800 hover:bg-gray-800/20 transition-colors">
+                                            <td className="px-4 py-4 text-sm font-medium text-white uppercase">{reg.pacienteNome}</td>
+                                            <td className="px-4 py-4">
+                                                <input
+                                                    type="text"
+                                                    value={formatarMoeda(reg.valorTotal)}
+                                                    onChange={(e) => handleUpdateRegistro(reg.id, "valorTotal", parseMoeda(e.target.value))}
+                                                    className="w-full bg-gray-800 border border-gray-700 text-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none text-right font-mono"
+                                                    placeholder="0,00"
+                                                />
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <select
+                                                    value={reg.tipo}
+                                                    onChange={(e) => handleUpdateRegistro(reg.id, "tipo", e.target.value as TipoFinanceiroAgendamento)}
+                                                    className="w-full bg-gray-800 border border-gray-700 text-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                                                >
+                                                    <option value="">Selecione</option>
+                                                    <option value="Particular">Particular</option>
+                                                    <option value="Convênio">Convênio</option>
+                                                    <option value="Campanha">Campanha</option>
+                                                    <option value="Exames">Exames</option>
+                                                    <option value="Revisão">Revisão</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <div className="space-y-2">
+                                                    {reg.pagamentos.map((pag, idx) => (
+                                                        <div key={idx} className="flex gap-2 items-center">
+                                                            <select
+                                                                value={pag.forma}
+                                                                onChange={(e) => handleUpdatePagamento(reg.id, idx, "forma", e.target.value as FormaPagamento)}
+                                                                className="flex-1 bg-gray-800 border border-gray-700 text-white px-2 py-1.5 text-xs"
+                                                            >
+                                                                {formasPagamento.map(f => (
+                                                                    <option key={f.id} value={f.nome}>{f.nome}</option>
+                                                                ))}
+                                                            </select>
+                                                            <input
+                                                                type="text"
+                                                                value={formatarMoeda(pag.valor)}
+                                                                onChange={(e) => handleUpdatePagamento(reg.id, idx, "valor", parseMoeda(e.target.value))}
+                                                                className="w-24 bg-gray-800 border border-gray-700 text-white px-2 py-1.5 text-xs text-right font-mono"
+                                                                placeholder="0,00"
+                                                            />
+                                                            <button
+                                                                onClick={() => handleRemovePagamento(reg.id, idx)}
+                                                                className="p-1.5 bg-gray-700/50 text-gray-400 hover:text-red-500"
+                                                            >
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => handleAddPagamento(reg.id)}
+                                                        className="w-full py-2 px-3 bg-[#0a0f2c] border border-blue-900/50 text-white text-xs font-bold hover:bg-[#151c4d] flex items-center justify-center gap-2"
+                                                    >
+                                                        <span className="text-lg leading-none">+</span> ADICIONAR FORMA DE PAGAMENTO
+                                                    </button>
+                                                    <div className="text-xs font-bold mt-1">
+                                                        <span className="text-blue-400">Total: R$ / R$ {totalPagamentos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                        {totalPagamentos === reg.valorTotal && reg.valorTotal > 0 && (
+                                                            <span className="text-green-500 ml-1">✓</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <select
+                                                    value={reg.situacao}
+                                                    onChange={(e) => handleUpdateRegistro(reg.id, "situacao", e.target.value as SituacaoFinanceiroAgendamento)}
+                                                    className="w-full bg-gray-800 border border-gray-700 text-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                                                >
+                                                    <option value="">Selecione</option>
+                                                    <option value="Caso Clínico">Caso Clínico</option>
+                                                    <option value="Efetivação">Efetivação</option>
+                                                    <option value="Perda">Perda</option>
+                                                </select>
+                                            </td>
+                                            <td className="px-4 py-4">
+                                                <input
+                                                    type="text"
+                                                    value={reg.observacoes}
+                                                    onChange={(e) => handleUpdateRegistro(reg.id, "observacoes", e.target.value)}
+                                                    className="w-full bg-gray-800 border border-gray-700 text-white px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+                                                    placeholder="..."
+                                                />
+                                            </td>
+                                            <td className="px-4 py-4 text-center">
+                                                <button
+                                                    onClick={() => handleSalvarFinanceiro(reg.id)}
+                                                    className="px-6 py-2 bg-[#0a0f2c] border border-blue-900/50 text-white text-xs font-bold hover:bg-blue-900 transition-colors uppercase"
+                                                >
+                                                    Salvar
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+
+                {/* Seção de Resumo - Apenas na visão financeira do dia (não individual) */}
+                {view === "financeiro" && !financeiroIndividualId && (
+                    <div className="mt-8 space-y-6">
+                        <h2 className="text-lg font-bold text-white uppercase tracking-tight">Resumo</h2>
+                        <div className="grid grid-cols-2 gap-8">
+                            {/* Por Tipo */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase">Por Tipo</h3>
+                                <table className="w-full text-sm text-left border border-gray-800 bg-gray-900/50">
+                                    <thead>
+                                        <tr className="border-b border-gray-800 bg-gray-800/30">
+                                            <th className="px-4 py-2 font-medium text-gray-400">Tipo</th>
+                                            <th className="px-4 py-2 font-medium text-gray-400">Quantidade</th>
+                                            <th className="px-4 py-2 font-medium text-gray-400">Total (R$)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-800">
+                                        {(["Particular", "Convênio", "Campanha", "Exames", "Revisão"] as TipoFinanceiroAgendamento[]).map(t => {
+                                            const filtrados = registrosFin.filter(r => r.tipo === t);
+                                            const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
+                                            return (
+                                                <tr key={t} className="text-gray-300">
+                                                    <td className="px-4 py-2 uppercase">{t}</td>
+                                                    <td className="px-4 py-2">{filtrados.length}</td>
+                                                    <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        <tr className="bg-gray-800/20 font-bold text-white">
+                                            <td className="px-4 py-2">Total</td>
+                                            <td className="px-4 py-2">{registrosFin.length}</td>
+                                            <td className="px-4 py-2">
+                                                {registrosFin.reduce((acc, r) => acc + (r.valorTotal || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Por Forma de Pagamento */}
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase">Por Forma de Pagamento</h3>
+                                <table className="w-full text-sm text-left border border-gray-800 bg-gray-900/50">
+                                    <thead>
+                                        <tr className="border-b border-gray-800 bg-gray-800/30">
+                                            <th className="px-4 py-2 font-medium text-gray-400">Forma de Pagamento</th>
+                                            <th className="px-4 py-2 font-medium text-gray-400">Quantidade</th>
+                                            <th className="px-4 py-2 font-medium text-gray-400">Total (R$)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-800">
+                                        {(["Dinheiro", "Cartão", "PIX"] as FormaPagamento[]).map(f => {
+                                            let count = 0;
+                                            let total = 0;
+                                            registrosFin.forEach(r => {
+                                                const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
+                                                if (pagamentosDessaForma.length > 0) {
+                                                    count += pagamentosDessaForma.length;
+                                                    total += pagamentosDessaForma.reduce((acc, p) => acc + p.valor, 0);
+                                                }
+                                            });
+                                            return (
+                                                <tr key={f} className="text-gray-300">
+                                                    <td className="px-4 py-2 uppercase">{f}</td>
+                                                    <td className="px-4 py-2">{count}</td>
+                                                    <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </MainLayout >
+    );
+}
+
+export default function AgendamentoPage() {
+    return (
+        <Suspense fallback={<div>Carregando...</div>}>
+            <AgendamentoContent />
+        </Suspense>
+    );
+}

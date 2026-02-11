@@ -1,0 +1,11 @@
+﻿
+F:\system teste\otica-vision\src\app\agendamento\page.tsx
+  5:20  warning  'Empresa' is defined but never used           @typescript-eslint/no-unused-vars
+  5:51  warning  'TurnoAtendimento' is defined but never used  @typescript-eslint/no-unused-vars
+
+F:\system teste\otica-vision\src\components\empresas\ConfiguracaoHorarios.tsx
+   8:5   warning  'DiaDisponivel' is defined but never used         @typescript-eslint/no-unused-vars
+  49:11  warning  'primeiroDia' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+Ô£û 4 problems (0 errors, 4 warnings)
+
