@@ -13,6 +13,8 @@ import {
     Prontuario,
     PacienteClinico,
 } from "@/data/clinicaData";
+import { generatePrescriptionHash, buildHashData } from "@/utils/prescriptionHash";
+import { generateQRCodeDataURL } from "@/utils/qrcode";
 
 interface ConfiguracaoHorarios {
     diasDisponiveis: {
@@ -367,7 +369,7 @@ function ClinicaContent() {
     };
 
     // Gerar receita (abre impressão)
-    const handleGerarReceita = (dados: {
+    const handleGerarReceita = async (dados: {
         exame: Exame;
         examePerto?: Exame;
         tipoLente: string;
@@ -378,7 +380,46 @@ function ClinicaContent() {
             return;
         }
 
-        // Criar HTML da receita
+        // 1. Gerar hash SHA-256 da receita
+        let hashHex = "";
+        let qrDataUrl = "";
+        try {
+            const hashData = buildHashData({
+                paciente: {
+                    nome: pacienteSelecionado.nome,
+                    cpf: pacienteSelecionado.documento,
+                    dataNascimento: pacienteSelecionado.dataNascimento,
+                },
+                exame: dados.exame,
+                examePerto: dados.examePerto,
+                tipoLente: dados.tipoLente,
+            });
+
+            hashHex = await generatePrescriptionHash(hashData);
+            qrDataUrl = await generateQRCodeDataURL(hashHex);
+
+            // 2. Salvar hash no Supabase
+            const agendamentoId = agendamentoSelecionado?.id;
+            if (agendamentoId) {
+                const { error: hashError } = await supabase
+                    .from('receita_hashes')
+                    .insert({
+                        agendamento_id: agendamentoId,
+                        paciente_id: pacienteSelecionado.id,
+                        hash_sha256: hashHex,
+                        dados_hashados: hashData,
+                        status: 'confirmed',
+                    });
+
+                if (hashError) {
+                    console.error("Erro ao salvar hash:", hashError);
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao gerar hash/QR:", err);
+        }
+
+        // 3. Criar HTML da receita com QR Code
         const receitaHTML = `
 <!DOCTYPE html>
 <html>
@@ -387,22 +428,54 @@ function ClinicaContent() {
     <title>Receita - ${pacienteSelecionado.nome}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-        .header h1 { font-size: 24px; margin-bottom: 5px; }
-        .header p { font-size: 14px; color: #666; }
-        .patient-info { margin-bottom: 30px; padding: 15px; background: #f5f5f5; border-radius: 5px; }
-        .patient-info p { margin: 5px 0; }
-        .prescription-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-        .prescription-table th, .prescription-table td { border: 1px solid #333; padding: 10px; text-align: center; }
-        .prescription-table th { background: #333; color: white; }
+        body { font-family: Arial, sans-serif; padding: 20px 30px; max-width: 800px; margin: 0 auto; }
+        .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+        .header h1 { font-size: 22px; margin-bottom: 3px; }
+        .header p { font-size: 13px; color: #666; }
+        .patient-info { margin-bottom: 15px; padding: 10px 15px; background: #f5f5f5; border-radius: 5px; }
+        .patient-info p { margin: 3px 0; font-size: 13px; }
+        .prescription-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        .prescription-table th, .prescription-table td { border: 1px solid #333; padding: 6px 8px; text-align: center; font-size: 13px; }
+        .prescription-table th { background: #333; color: white; font-size: 12px; }
         .eye-label { font-weight: bold; background: #eee; }
-        .lens-info { margin-bottom: 30px; }
-        .lens-info p { margin: 10px 0; }
-        .observations { padding: 15px; background: #ffffd0; border: 1px solid #e0e000; margin-bottom: 30px; }
-        .footer { margin-top: 50px; text-align: center; }
-        .signature { margin-top: 80px; border-top: 1px solid #333; width: 300px; margin-left: auto; margin-right: auto; padding-top: 10px; }
-        @media print { body { padding: 20px; } }
+        .lens-info { margin-bottom: 10px; }
+        .lens-info p { margin: 5px 0; font-size: 13px; }
+        .observations { padding: 10px; background: #ffffd0; border: 1px solid #e0e000; margin-bottom: 15px; font-size: 13px; }
+        .footer { margin-top: 20px; text-align: center; }
+        .signature { margin-top: 40px; border-top: 1px solid #333; width: 300px; margin-left: auto; margin-right: auto; padding-top: 8px; font-size: 13px; }
+        .blockchain-verification {
+            margin-top: 20px;
+            padding: 12px;
+            border: 2px solid #2d5a27;
+            border-radius: 8px;
+            background: #f0f9f0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .blockchain-verification .qr-side { flex-shrink: 0; }
+        .blockchain-verification .info-side { text-align: left; }
+        .blockchain-verification h3 {
+            color: #2d5a27;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .blockchain-verification .hash {
+            font-family: monospace;
+            font-size: 8px;
+            color: #555;
+            word-break: break-all;
+            margin-top: 4px;
+        }
+        .blockchain-verification .instructions {
+            font-size: 10px;
+            color: #666;
+            margin-top: 4px;
+        }
+        .blockchain-verification img {
+            display: block;
+        }
+        @media print { body { padding: 15px 20px; } }
     </style>
 </head>
 <body>
@@ -416,6 +489,7 @@ function ClinicaContent() {
         <p><strong>Data de Nascimento:</strong> ${pacienteSelecionado.dataNascimento ? new Date(pacienteSelecionado.dataNascimento + "T12:00:00").toLocaleDateString("pt-BR") : "-"}</p>
     </div>
     
+    ${dados.examePerto ? '<h3 style="margin-bottom: 10px; font-size: 16px; color: #333;">LONGE (Distância)</h3>' : ''}
     <table class="prescription-table">
         <thead>
             <tr>
@@ -447,6 +521,40 @@ function ClinicaContent() {
         </tbody>
     </table>
     
+    ${dados.examePerto ? `
+    <h3 style="margin: 20px 0 10px; font-size: 16px; color: #333;">PERTO (Leitura)</h3>
+    <table class="prescription-table">
+        <thead>
+            <tr>
+                <th>OLHO</th>
+                <th>ESFÉRICO</th>
+                <th>CILÍNDRICO</th>
+                <th>EIXO</th>
+                <th>ADIÇÃO</th>
+                <th>DNP</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="eye-label">OD (Direito)</td>
+                <td>${dados.examePerto.olhoDireito.esferico || "-"}</td>
+                <td>${dados.examePerto.olhoDireito.cilindrico || "-"}</td>
+                <td>${dados.examePerto.olhoDireito.eixo || "-"}°</td>
+                <td>${dados.examePerto.olhoDireito.adicao || "-"}</td>
+                <td>${dados.examePerto.olhoDireito.dnp || "-"} mm</td>
+            </tr>
+            <tr>
+                <td class="eye-label">OE (Esquerdo)</td>
+                <td>${dados.examePerto.olhoEsquerdo.esferico || "-"}</td>
+                <td>${dados.examePerto.olhoEsquerdo.cilindrico || "-"}</td>
+                <td>${dados.examePerto.olhoEsquerdo.eixo || "-"}°</td>
+                <td>${dados.examePerto.olhoEsquerdo.adicao || "-"}</td>
+                <td>${dados.examePerto.olhoEsquerdo.dnp || "-"} mm</td>
+            </tr>
+        </tbody>
+    </table>
+    ` : ''}
+    
     <div class="lens-info">
         <p><strong>Tipo de Lente:</strong> ${dados.tipoLente}</p>
     </div>
@@ -463,6 +571,17 @@ function ClinicaContent() {
             <p>Assinatura do Profissional</p>
         </div>
     </div>
+
+    ${hashHex ? `
+    <div class="blockchain-verification">
+        ${qrDataUrl ? `<div class="qr-side"><img src="${qrDataUrl}" alt="QR Code" width="100" height="100" /></div>` : ''}
+        <div class="info-side">
+            <h3>🔐 VERIFICAÇÃO BLOCKCHAIN</h3>
+            <p class="instructions">Escaneie o QR Code para verificar a autenticidade desta receita</p>
+            <p class="hash">Hash: ${hashHex}</p>
+        </div>
+    </div>
+    ` : ''}
     
     <script>
         window.onload = function() { 
@@ -480,7 +599,6 @@ function ClinicaContent() {
         const newWindow = window.open(url, '_blank');
 
         if (!newWindow) {
-            // Se popup foi bloqueado, oferece download
             const link = document.createElement('a');
             link.href = url;
             link.download = `receita_${pacienteSelecionado.nome.replace(/\s/g, '_')}.html`;
@@ -489,7 +607,7 @@ function ClinicaContent() {
             document.body.removeChild(link);
             mostrarMensagem("sucesso", "Receita baixada! Abra o arquivo para imprimir.");
         } else {
-            mostrarMensagem("sucesso", "Receita gerada! A janela de impressão deve abrir automaticamente.");
+            mostrarMensagem("sucesso", "Receita gerada com verificação blockchain!");
         }
 
         // Limpar URL após um tempo

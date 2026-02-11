@@ -22,6 +22,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#0a0a0a" />
+      </head>
       <body className={`${roboto.variable} antialiased bg-gray-950 text-gray-100`} suppressHydrationWarning>
         <AuthProvider>
           {children}
