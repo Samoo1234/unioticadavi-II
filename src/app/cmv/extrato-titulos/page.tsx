@@ -100,14 +100,31 @@ export default function ExtratoTitulosPage() {
         pago: titulos.filter(t => t.empresa_id === emp.id && t.status === "pago").reduce((acc, t) => acc + t.valor, 0),
     })).filter(e => e.pendente > 0 || e.pago > 0);
 
-    const titulosPorTipo = tipos.map(tipo => ({
-        tipo: tipo.nome,
-        total: titulos.filter(t => t.tipo_id === tipo.id).reduce((acc, t) => acc + t.valor, 0),
-    })).filter(t => t.total > 0);
+    const titulosPorTipo = tipos.map(tipo => {
+        const doTipo = titulos.filter(t => t.tipo_id === tipo.id);
+        const pendentes = doTipo.filter(t => t.status === "pendente");
+        const pagos = doTipo.filter(t => t.status === "pago");
+        return {
+            tipo: tipo.nome,
+            pendentesQtd: pendentes.length,
+            pendentesValor: pendentes.reduce((acc, t) => acc + t.valor, 0),
+            pagosQtd: pagos.length,
+            pagosValor: pagos.reduce((acc, t) => acc + t.valor, 0),
+            totalQtd: doTipo.length,
+            totalValor: doTipo.reduce((acc, t) => acc + t.valor, 0),
+        };
+    }).filter(t => t.totalQtd > 0);
 
     const totalPendente = titulos.filter(t => t.status === "pendente").reduce((acc, t) => acc + t.valor, 0);
+    const totalPendenteQtd = titulos.filter(t => t.status === "pendente").length;
     const totalPago = titulos.filter(t => t.status === "pago").reduce((acc, t) => acc + t.valor, 0);
+    const totalPagoQtd = titulos.filter(t => t.status === "pago").length;
     const totalGeral = totalPendente + totalPago;
+    const totalGeralQtd = totalPendenteQtd + totalPagoQtd;
+
+    const empresaFiltrada = filtros.empresa_id
+        ? empresas.find(e => e.id === parseInt(filtros.empresa_id))?.nome_fantasia || ""
+        : "Todas as Filiais";
 
     const handlePagar = async (id: number) => {
         const { error } = await supabase.from("titulos").update({
@@ -120,7 +137,7 @@ export default function ExtratoTitulosPage() {
 
     return (
         <MainLayout>
-            <div className="h-full flex flex-col">
+            <div className="flex flex-col gap-4">
                 {/* Header */}
                 <div className="border-b border-gray-800 pb-4 mb-4">
                     <div className="text-xs text-gray-500">CMV</div>
@@ -168,26 +185,75 @@ export default function ExtratoTitulosPage() {
                     </div>
                 </div>
 
-                {/* Resumo por Empresa e Tipo */}
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-gray-900 border border-gray-800 p-4">
-                        <div className="text-xs text-gray-500 mb-2">POR EMPRESA</div>
-                        {titulosPorEmpresa.map((e, i) => (
-                            <div key={i} className="flex justify-between text-sm py-1 border-b border-gray-800">
-                                <span className="text-white">{e.empresa}</span>
-                                <span className="text-yellow-400">{formatarValor(e.pendente)}</span>
-                            </div>
-                        ))}
+                {/* Resumo de Títulos por Tipo */}
+                <div className="bg-gray-900 border border-gray-800 mb-4">
+                    <div className="px-4 py-3 border-b border-gray-800">
+                        <div className="text-center">
+                            <div className="text-sm font-bold text-white">📊 Resumo de Títulos por Tipo ({empresaFiltrada})</div>
+                        </div>
                     </div>
-                    <div className="bg-gray-900 border border-gray-800 p-4">
-                        <div className="text-xs text-gray-500 mb-2">POR TIPO</div>
-                        {titulosPorTipo.map((t, i) => (
-                            <div key={i} className="flex justify-between text-sm py-1 border-b border-gray-800">
-                                <span className="text-white">{t.tipo}</span>
-                                <span className="text-blue-400">{formatarValor(t.total)}</span>
-                            </div>
-                        ))}
-                    </div>
+                    <table className="w-full">
+                        <thead>
+                            <tr className="bg-gray-800">
+                                <th className="text-left text-xs text-gray-400 font-medium px-4 py-3">Tipo de Título</th>
+                                <th className="text-center text-xs text-yellow-400 font-medium px-4 py-3">Pendentes</th>
+                                <th className="text-center text-xs text-green-400 font-medium px-4 py-3">Pagos</th>
+                                <th className="text-center text-xs text-blue-400 font-medium px-4 py-3">Total</th>
+                                <th className="text-center text-xs text-gray-400 font-medium px-4 py-3">Percentual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {titulosPorTipo.map((t, i) => (
+                                <tr key={i} className="border-t border-gray-800 hover:bg-gray-800/50">
+                                    <td className="px-4 py-3 text-white text-sm font-medium">{t.tipo}</td>
+                                    <td className="px-4 py-3 text-center">
+                                        <div className="text-sm text-yellow-400 font-medium">{t.pendentesQtd} títulos</div>
+                                        <div className="text-xs text-yellow-400/70">{formatarValor(t.pendentesValor)}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <div className="text-sm text-green-400 font-medium">{t.pagosQtd} títulos</div>
+                                        <div className="text-xs text-green-400/70">{formatarValor(t.pagosValor)}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                        <div className="text-sm text-blue-400 font-medium">{t.totalQtd} títulos</div>
+                                        <div className="text-xs text-blue-400/70">{formatarValor(t.totalValor)}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-center text-sm text-white font-mono">
+                                        {totalGeral > 0 ? ((t.totalValor / totalGeral) * 100).toFixed(1) : "0.0"}%
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className="border-t-2 border-gray-600 bg-gray-800/80">
+                                <td className="px-4 py-3 text-white text-sm font-bold">TOTAL GERAL</td>
+                                <td className="px-4 py-3 text-center">
+                                    <div className="text-sm text-yellow-400 font-bold">{totalPendenteQtd} títulos</div>
+                                    <div className="text-xs text-yellow-400/70 font-medium">{formatarValor(totalPendente)}</div>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                    <div className="text-sm text-green-400 font-bold">{totalPagoQtd} títulos</div>
+                                    <div className="text-xs text-green-400/70 font-medium">{formatarValor(totalPago)}</div>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                    <div className="text-sm text-blue-400 font-bold">{totalGeralQtd} títulos</div>
+                                    <div className="text-xs text-blue-400/70 font-medium">{formatarValor(totalGeral)}</div>
+                                </td>
+                                <td className="px-4 py-3 text-center text-sm text-white font-bold font-mono">100.0%</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                {/* Resumo por Empresa */}
+                <div className="bg-gray-900 border border-gray-800 p-4 mb-4">
+                    <div className="text-xs text-gray-500 mb-2">POR EMPRESA</div>
+                    {titulosPorEmpresa.map((e, i) => (
+                        <div key={i} className="flex justify-between text-sm py-1 border-b border-gray-800">
+                            <span className="text-white">{e.empresa}</span>
+                            <span className="text-yellow-400">{formatarValor(e.pendente)}</span>
+                        </div>
+                    ))}
                 </div>
 
                 {/* Lista */}

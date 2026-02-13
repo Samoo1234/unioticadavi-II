@@ -3,59 +3,68 @@
 import MainLayout from "@/components/MainLayout";
 import { supabase } from "@/lib/supabase";
 import { Paciente } from "@/data/mockData";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 export default function PacientesPage() {
     const [listaPacientes, setListaPacientes] = useState<Paciente[]>([]);
-    const [carregando, setCarregando] = useState(true);
+    const [carregando, setCarregando] = useState(false);
     const [pacienteSelecionado, setPacienteSelecionado] = useState<Paciente | null>(null);
     const [editando, setEditando] = useState(false);
     const [editFormData, setEditFormData] = useState<any>(null);
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
+    const [termoBusca, setTermoBusca] = useState("");
+    const inputBuscaRef = useRef<HTMLInputElement>(null);
 
+    // Debounced search — only triggers after 3+ chars and 300ms idle
     useEffect(() => {
-        fetchPacientes();
-    }, []);
+        if (termoBusca.length < 3) {
+            setListaPacientes([]);
+            return;
+        }
+        const timer = setTimeout(() => {
+            buscarPacientes(termoBusca);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [termoBusca]);
 
-    const fetchPacientes = async (selecionarId?: string | number) => {
+    const buscarPacientes = async (termo: string) => {
         setCarregando(true);
         const { data, error } = await supabase
             .from('pacientes')
             .select('*')
-            .order('nome');
+            .ilike('nome', `%${termo}%`)
+            .order('nome')
+            .limit(20);
 
         if (!error && data) {
-            const adaptedData = data.map((p: any) => ({
-                id: p.id,
-                nome: p.nome,
-                telefone: p.telefone,
-                email: p.email || "",
-                cpf: p.cpf || "",
-                dataNascimento: p.data_nascimento || "",
-                ultimaConsulta: p.created_at,
-                nomePai: p.nome_pai || "",
-                nomeMae: p.nome_mae || "",
-                enderecoCompleto: p.endereco_completo || "",
-                enderecoLogradouro: p.endereco_logradouro || "",
-                enderecoNumero: p.endereco_numero || "",
-                enderecoBairro: p.endereco_bairro || "",
-                enderecoCidade: p.endereco_cidade || "",
-                enderecoEstado: p.endereco_estado || "",
-                enderecoCep: p.endereco_cep || "",
-                enderecoComplemento: p.endereco_complemento || "",
-                rg: p.rg || "",
-                observacoes: p.observacoes || ""
-            }));
+            const adaptedData = adaptarDados(data);
             setListaPacientes(adaptedData);
-
-            if (selecionarId) {
-                const found = adaptedData.find(p => p.id === selecionarId);
-                if (found) setPacienteSelecionado(found);
-            } else if (!pacienteSelecionado && adaptedData.length > 0) {
-                setPacienteSelecionado(adaptedData[0]);
-            }
         }
         setCarregando(false);
+    };
+
+    const adaptarDados = (data: any[]): Paciente[] => {
+        return data.map((p: any) => ({
+            id: p.id,
+            nome: p.nome,
+            telefone: p.telefone,
+            email: p.email || "",
+            cpf: p.cpf || "",
+            dataNascimento: p.data_nascimento || "",
+            ultimaConsulta: p.created_at,
+            nomePai: p.nome_pai || "",
+            nomeMae: p.nome_mae || "",
+            enderecoCompleto: p.endereco_completo || "",
+            enderecoLogradouro: p.endereco_logradouro || "",
+            enderecoNumero: p.endereco_numero || "",
+            enderecoBairro: p.endereco_bairro || "",
+            enderecoCidade: p.endereco_cidade || "",
+            enderecoEstado: p.endereco_estado || "",
+            enderecoCep: p.endereco_cep || "",
+            enderecoComplemento: p.endereco_complemento || "",
+            rg: p.rg || "",
+            observacoes: p.observacoes || ""
+        }));
     };
 
     const mostrarMensagem = (tipo: "sucesso" | "erro", texto: string) => {
@@ -121,13 +130,11 @@ export default function PacientesPage() {
 
             let result;
             if (editFormData.id) {
-                // Update
                 result = await supabase
                     .from('pacientes')
                     .update(payload)
                     .eq('id', editFormData.id);
             } else {
-                // Create
                 result = await supabase
                     .from('pacientes')
                     .insert(payload)
@@ -139,8 +146,28 @@ export default function PacientesPage() {
 
             mostrarMensagem("sucesso", editFormData.id ? "PACIENTE ATUALIZADO" : "PACIENTE CADASTRADO");
             setEditando(false);
-            const targetId = editFormData.id || (result.data as any).id;
-            fetchPacientes(targetId);
+
+            // After save, search for the saved patient's name
+            const nomeSalvo = editFormData.nome;
+            setTermoBusca(nomeSalvo);
+
+            // Fetch and select the saved patient
+            const targetId = editFormData.id || (result.data as any)?.id;
+            const { data: refreshData } = await supabase
+                .from('pacientes')
+                .select('*')
+                .ilike('nome', `%${nomeSalvo}%`)
+                .order('nome')
+                .limit(20);
+
+            if (refreshData) {
+                const adapted = adaptarDados(refreshData);
+                setListaPacientes(adapted);
+                if (targetId) {
+                    const found = adapted.find(p => p.id === targetId);
+                    if (found) setPacienteSelecionado(found);
+                }
+            }
         } catch (error: any) {
             console.error("Erro ao salvar paciente:", error);
             mostrarMensagem("erro", "ERRO AO SALVAR: " + error.message);
@@ -187,23 +214,76 @@ export default function PacientesPage() {
 
                 {/* Layout 2 colunas */}
                 <div className="flex-1 grid grid-cols-3 gap-6 min-h-0">
-                    {/* Lista de Pacientes */}
+                    {/* Search + Results */}
                     <div className="bg-gray-900 border border-gray-800 flex flex-col">
                         <div className="border-b border-gray-800 px-4 py-3">
-                            <h2 className="text-sm font-bold text-white">LISTA</h2>
-                            <p className="text-xs text-gray-500 mt-1">
-                                {listaPacientes.length} registros
-                            </p>
+                            <h2 className="text-sm font-bold text-white mb-2">PESQUISAR</h2>
+                            <div className="relative">
+                                <svg
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                                    />
+                                </svg>
+                                <input
+                                    ref={inputBuscaRef}
+                                    type="text"
+                                    value={termoBusca}
+                                    onChange={(e) => setTermoBusca(e.target.value)}
+                                    placeholder="Pesquisar paciente..."
+                                    className="w-full bg-gray-800 border border-gray-700 text-sm text-white pl-10 pr-3 py-2 focus:border-green-500 focus:outline-none"
+                                />
+                                {termoBusca && (
+                                    <button
+                                        onClick={() => {
+                                            setTermoBusca("");
+                                            setListaPacientes([]);
+                                            setPacienteSelecionado(null);
+                                            inputBuscaRef.current?.focus();
+                                        }}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+                            {listaPacientes.length > 0 && (
+                                <p className="text-xs text-gray-500 mt-2">
+                                    {listaPacientes.length} resultado{listaPacientes.length !== 1 ? "s" : ""}
+                                </p>
+                            )}
                         </div>
                         <div className="flex-1 overflow-auto">
                             {carregando ? (
                                 <div className="p-4 text-center text-xs text-gray-500">Carregando...</div>
+                            ) : termoBusca.length < 3 ? (
+                                <div className="p-6 text-center">
+                                    <div className="text-gray-600 mb-2">
+                                        <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                        </svg>
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                        Digite pelo menos <span className="text-green-500 font-bold">3 letras</span> para pesquisar
+                                    </p>
+                                </div>
+                            ) : listaPacientes.length === 0 ? (
+                                <div className="p-6 text-center">
+                                    <p className="text-xs text-gray-500">Nenhum paciente encontrado</p>
+                                </div>
                             ) : (
                                 listaPacientes.map((paciente) => (
                                     <button
                                         key={paciente.id}
                                         onClick={() => setPacienteSelecionado(paciente)}
-                                        className={`w-full text-left px-4 py-3 border-b border-gray-800/50 ${pacienteSelecionado?.id === paciente.id
+                                        className={`w-full text-left px-4 py-3 border-b border-gray-800/50 transition-colors ${pacienteSelecionado?.id === paciente.id
                                             ? "bg-gray-800"
                                             : "hover:bg-gray-800/50"
                                             }`}
@@ -533,7 +613,7 @@ export default function PacientesPage() {
                             </div>
                         ) : (
                             <div className="p-6 text-center text-gray-500">
-                                Selecione um paciente na lista
+                                Pesquise e selecione um paciente
                             </div>
                         )}
                     </div>

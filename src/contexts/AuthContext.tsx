@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 export type Permission = {
     module: string;
@@ -14,6 +14,7 @@ type AuthContextType = {
     profile: any | null;
     permissions: Permission[];
     roleName: string | null;
+    medicoId: number | null;
     loading: boolean;
     hasPermission: (module: string, action: string) => boolean;
     isModuleAllowed: (module: string) => boolean;
@@ -26,8 +27,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [profile, setProfile] = useState<any | null>(null);
     const [permissions, setPermissions] = useState<Permission[]>([]);
     const [roleName, setRoleName] = useState<string | null>(null);
+    const [medicoId, setMedicoId] = useState<number | null>(null);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
+    const pathname = usePathname();
+
+    const isPublicRoute = pathname?.startsWith('/verificar');
 
     const fetchProfileData = async (userId: string) => {
         const { data, error } = await supabase
@@ -62,6 +67,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     action: rp.permissions.action
                 }));
                 setPermissions(pList);
+
+                // If role is Médico, fetch medico_id linked to this user
+                if (r.name === 'Médico') {
+                    const { data: medicoData } = await supabase
+                        .from('medicos')
+                        .select('id')
+                        .eq('user_id', userId)
+                        .eq('ativo', true)
+                        .maybeSingle();
+
+                    if (medicoData) {
+                        setMedicoId(medicoData.id);
+                    }
+                }
             }
         }
     };
@@ -88,13 +107,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setProfile(null);
                 setPermissions([]);
                 setRoleName(null);
-                router.push('/login');
+                setMedicoId(null);
+                if (!isPublicRoute) {
+                    router.push('/login');
+                }
             }
             setLoading(false);
         });
 
         return () => subscription.unsubscribe();
-    }, [router]);
+    }, [router, isPublicRoute]);
 
     const hasPermission = (module: string, action: string) => {
         if (roleName === 'Administrador') return true;
@@ -107,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, profile, permissions, roleName, loading, hasPermission, isModuleAllowed }}>
+        <AuthContext.Provider value={{ user, profile, permissions, roleName, medicoId, loading, hasPermission, isModuleAllowed }}>
             {children}
         </AuthContext.Provider>
     );

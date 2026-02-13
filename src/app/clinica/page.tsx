@@ -7,6 +7,7 @@ import PatientInfo from "@/components/clinica/PatientInfo";
 import ExamForm from "@/components/clinica/ExamForm";
 import HistoryList from "@/components/clinica/HistoryList";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
 import {
     HistoricoConsulta,
     Exame,
@@ -53,6 +54,7 @@ interface Agendamento {
 function ClinicaContent() {
     const searchParams = useSearchParams();
     const pacienteIdFromUrl = searchParams.get("pacienteId");
+    const { medicoId, roleName } = useAuth();
 
     // Estados
     const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -130,13 +132,19 @@ function ClinicaContent() {
 
     const fetchAgendamentos = async () => {
         setCarregando(true);
-        const { data, error } = await supabase
+        let query = supabase
             .from('agendamentos')
             .select('*, pacientes(*)')
             .eq('empresa_id', filtroEmpresaId)
             .eq('data', filtroData)
-            .neq('status', 'cancelado')
-            .order('hora');
+            .neq('status', 'cancelado');
+
+        // Filter by doctor if logged in as Médico with linked medico_id
+        if (roleName === 'Médico' && medicoId) {
+            query = query.or(`medico_id.eq.${medicoId},medico_id.is.null`);
+        }
+
+        const { data, error } = await query.order('hora');
 
         if (!error && data) {
             setAgendamentos(data);
@@ -790,6 +798,11 @@ function ClinicaContent() {
                                         {carregando ? (
                                             <div className="p-4 text-center text-gray-500 text-sm">
                                                 Carregando...
+                                            </div>
+                                        ) : roleName === 'Médico' && !medicoId ? (
+                                            <div className="p-4 text-center text-yellow-500/80 text-sm">
+                                                <div className="text-lg mb-2">⚠️</div>
+                                                Seu usuário ainda não está vinculado a um cadastro de médico. Solicite ao administrador.
                                             </div>
                                         ) : agendamentos.length === 0 ? (
                                             <div className="p-4 text-center text-gray-500 text-sm">
