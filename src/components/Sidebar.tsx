@@ -31,21 +31,24 @@ const adminItems: MenuItem[] = [
     { label: "AUDITORIA", href: "/admin/audit", module: "admin", action: "view_audit" },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+    isOpen: boolean;
+    onClose: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     const pathname = usePathname();
     const router = useRouter();
     const { hasPermission, roleName } = useAuth();
 
     const handleLogout = async () => {
         try {
-            // Attempt a graceful logout
             await supabase.auth.signOut();
         } catch (error) {
             console.error("Erro ao fazer logout:", error);
         } finally {
-            // Always redirect to login, even if Supabase call fails
-            // This prevents a "stuck" UI if the connection is dead
             router.push("/login");
+            onClose();
         }
     };
 
@@ -57,8 +60,9 @@ export default function Sidebar() {
             <li key={item.href}>
                 <Link
                     href={item.href}
-                    className={`block px-4 py-2 text-[10px] font-black border-l-2 tracking-widest ${isActive
-                        ? "border-emerald-500 bg-emerald-500/5 text-white"
+                    onClick={() => onClose()}
+                    className={`block px-4 py-2 text-[10px] font-black border-l-2 tracking-widest transition-all ${isActive
+                        ? "border-emerald-500 bg-emerald-500/10 text-white"
                         : "border-transparent text-gray-500 hover:text-white hover:bg-gray-800"
                         }`}
                 >
@@ -69,10 +73,24 @@ export default function Sidebar() {
     };
 
     return (
-        <aside className="w-48 bg-gray-950 border-r border-gray-800 flex flex-col">
-            <div className="p-4 border-b border-gray-800">
-                <h1 className="text-white font-black text-sm tracking-tighter italic">ÓTICA DAVI</h1>
-                <p className="text-[8px] text-emerald-500 font-bold tracking-[0.2em]">{roleName?.toUpperCase() || 'USUÁRIO'}</p>
+        <aside className={`
+            fixed inset-y-0 left-0 z-50 w-64 lg:w-48 bg-gray-950 border-r border-gray-800 flex flex-col transition-transform duration-300 ease-in-out
+            ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+            lg:relative lg:z-0
+        `}>
+            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+                <div>
+                    <h1 className="text-white font-black text-sm tracking-tighter italic">ÓTICA DAVI</h1>
+                    <p className="text-[8px] text-emerald-500 font-bold tracking-[0.2em]">{roleName?.toUpperCase() || 'USUÁRIO'}</p>
+                </div>
+                <button
+                    onClick={onClose}
+                    className="lg:hidden p-2 text-gray-500 hover:text-white"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
             </div>
 
             <nav className="flex-1 py-4 overflow-y-auto">
