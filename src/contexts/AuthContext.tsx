@@ -35,57 +35,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isPublicRoute = pathname?.startsWith('/verificar');
 
     const fetchProfileData = async (userId: string) => {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select(`
-                *,
-                roles (
-                    name,
-                    role_permissions (
-                        permissions (
-                            module,
-                            action
+        try {
+            const { data, error } = await supabase
+                .from('profiles')
+                .select(`
+                    *,
+                    roles (
+                        name,
+                        role_permissions (
+                            permissions (
+                                module,
+                                action
+                            )
                         )
                     )
-                )
-            `)
-            .eq('id', userId)
-            .single();
+                `)
+                .eq('id', userId)
+                .single();
 
-        if (error) {
-            console.error('Error fetching profile:', error);
-            return;
-        }
+            if (error) {
+                console.error('Error fetching profile:', error);
+                // Clear profile state if fetching fails to avoid stale data
+                setProfile(null);
+                setPermissions([]);
+                setRoleName(null);
+                return;
+            }
 
-        if (data) {
-            setProfile(data);
-            const r = data.roles as any;
-            if (r) {
-                setRoleName(r.name);
-                const pList = r.role_permissions.map((rp: any) => ({
-                    module: rp.permissions.module,
-                    action: rp.permissions.action
-                }));
-                setPermissions(pList);
+            if (data) {
+                setProfile(data);
+                const r = data.roles as any;
+                if (r) {
+                    setRoleName(r.name);
+                    const pList = r.role_permissions.map((rp: any) => ({
+                        module: rp.permissions.module,
+                        action: rp.permissions.action
+                    }));
+                    setPermissions(pList);
 
-                // If role is Médico, fetch medico_id linked to this user
-                if (r.name === 'Médico') {
-                    const { data: medicoData } = await supabase
-                        .from('medicos')
-                        .select('id')
-                        .eq('user_id', userId)
-                        .eq('ativo', true)
-                        .maybeSingle();
+                    if (r.name === 'Médico') {
+                        const { data: medicoData } = await supabase
+                            .from('medicos')
+                            .select('id')
+                            .eq('user_id', userId)
+                            .eq('ativo', true)
+                            .maybeSingle();
 
-                    if (medicoData) {
-                        setMedicoId(medicoData.id);
+                        if (medicoData) {
+                            setMedicoId(medicoData.id);
+                        }
                     }
                 }
             }
+        } catch (err) {
+            console.error('Fatal error in fetchProfileData:', err);
+        } finally {
+            setLoading(false);
         }
     };
 
-    // 1. Auth State Listener (Runs once)
+    // 1. Unified Auth State Management
     useEffect(() => {
         let mounted = true;
 
@@ -93,56 +102,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (!mounted) return;
 
             if (session?.user) {
-                setUser(session.user);
-                // Fetch profile only if not loaded or different user
-                // Note: user state inside here is from closure, so simpler to just fetch always or check id
-                // But since this is "session changed" or "init", let's fetch.
-                await fetchProfileData(session.user.id);
+                if (session.user.id !== user?.id) {
+                    setUser(session.user);
+                    await fetchProfileData(session.user.id);
+                }
             } else {
                 setUser(null);
                 setProfile(null);
                 setPermissions([]);
                 setRoleName(null);
                 setMedicoId(null);
+                setLoading(false);
             }
-            setLoading(false);
         };
 
-        const initializeAuth = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            await handleSession(session);
-        };
+        // Initialize session on mount
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            handleSession(session);
+        });
 
-        initializeAuth();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-            await handleSession(session);
+        // Listen for all auth changes (including SIGN_OUT, TOKEN_REFRESHED)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
+                // Force immediate clean up on specific events
+                await handleSession(session);
+            } else {
+                await handleSession(session);
+            }
         });
 
         return () => {
             mounted = false;
             subscription.unsubscribe();
         };
-    }, []); // Empty dependency array ensures this runs once
-
-    // 2. Session Sync on Navigation (Runs on route change)
-    // This ensures that if middleware updated the cookie/session, the client picks it up.
-    useEffect(() => {
-        const syncSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user && session.user.id !== user?.id) {
-                // User changed or session recovered
-                setUser(session.user);
-                await fetchProfileData(session.user.id);
-            } else if (!session && user) {
-                // Session lost
-                setUser(null);
-                setProfile(null);
-            }
-        };
-
-        syncSession();
-    }, [pathname]);
+    }, []); // Only run once on mount
 
     // 3. Route Protection (Runs on changes)
     useEffect(() => {

@@ -37,8 +37,16 @@ export default function Sidebar() {
     const { hasPermission, roleName } = useAuth();
 
     const handleLogout = async () => {
-        await supabase.auth.signOut();
-        router.push("/login");
+        try {
+            // Attempt a graceful logout
+            await supabase.auth.signOut();
+        } catch (error) {
+            console.error("Erro ao fazer logout:", error);
+        } finally {
+            // Always redirect to login, even if Supabase call fails
+            // This prevents a "stuck" UI if the connection is dead
+            router.push("/login");
+        }
     };
 
     const renderLink = (item: MenuItem) => {
