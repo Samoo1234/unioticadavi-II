@@ -15,8 +15,8 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
     { label: "DASHBOARD", href: "/dashboard" },
-    { label: "PACIENTES", href: "/pacientes", module: "pacientes", action: "view" },
     { label: "AGENDAMENTO", href: "/agendamento", module: "agendamentos", action: "view" },
+    { label: "PACIENTES", href: "/pacientes", module: "pacientes", action: "view" },
     { label: "CLÍNICA", href: "/clinica", module: "clinica", action: "view" },
     { label: "VENDAS", href: "/vendas", module: "vendas", action: "view" },
     { label: "FINANCEIRO", href: "/financeiro", module: "financeiro", action: "view" },
