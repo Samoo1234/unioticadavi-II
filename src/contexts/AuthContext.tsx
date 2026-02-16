@@ -85,22 +85,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
+    // 1. Auth State Listener (Runs once)
     useEffect(() => {
-        const initializeAuth = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                setUser(session.user);
-                await fetchProfileData(session.user.id);
-            } else {
-                setLoading(false);
-            }
-        };
+        let mounted = true;
 
-        initializeAuth();
+        const handleSession = async (session: any) => {
+            if (!mounted) return;
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (session) {
+            if (session?.user) {
                 setUser(session.user);
+                // Fetch profile only if not loaded or different user
+                // Note: user state inside here is from closure, so simpler to just fetch always or check id
+                // But since this is "session changed" or "init", let's fetch.
                 await fetchProfileData(session.user.id);
             } else {
                 setUser(null);
@@ -108,15 +104,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setPermissions([]);
                 setRoleName(null);
                 setMedicoId(null);
-                if (!isPublicRoute) {
-                    router.push('/login');
-                }
             }
             setLoading(false);
+        };
+
+        const initializeAuth = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            await handleSession(session);
+        };
+
+        initializeAuth();
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+            await handleSession(session);
         });
 
-        return () => subscription.unsubscribe();
-    }, [router, isPublicRoute]);
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
+    }, []); // Empty dependency array ensures this runs once
+
+    // 2. Session Sync on Navigation (Runs on route change)
+    // This ensures that if middleware updated the cookie/session, the client picks it up.
+    useEffect(() => {
+        const syncSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user && session.user.id !== user?.id) {
+                // User changed or session recovered
+                setUser(session.user);
+                await fetchProfileData(session.user.id);
+            } else if (!session && user) {
+                // Session lost
+                setUser(null);
+                setProfile(null);
+            }
+        };
+
+        syncSession();
+    }, [pathname]);
+
+    // 3. Route Protection (Runs on changes)
+    useEffect(() => {
+        if (!loading && !user && !isPublicRoute) {
+            router.push('/login');
+        }
+    }, [user, loading, isPublicRoute, router]);
 
     const hasPermission = (module: string, action: string) => {
         if (roleName === 'Administrador') return true;

@@ -9,7 +9,7 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "ÓTICA VISION - Sistema de Gestão",
+  title: "ÓTICA DAVI - Sistema de Gestão",
   description: "Sistema de gestão de ótica - Painel de Controle",
 };
 

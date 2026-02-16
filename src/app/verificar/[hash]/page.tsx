@@ -172,7 +172,7 @@ export default async function VerificarPage({ params }: VerificarPageProps) {
                         Verificado em {new Date().toLocaleDateString("pt-BR")} às {new Date().toLocaleTimeString("pt-BR")}
                     </p>
                     <p style={{ fontSize: 11, color: "#444", marginTop: 4 }}>
-                        Sistema de Verificação Blockchain • Ótica Vision
+                        Sistema de Verificação Blockchain • Ótica Davi
                     </p>
                 </div>
             </div>

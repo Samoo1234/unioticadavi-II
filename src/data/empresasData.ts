@@ -65,12 +65,12 @@ export const empresas: Empresa[] = [
     {
         id: 1,
         tipo: "Matriz",
-        razaoSocial: "ÓTICA VISION LTDA",
-        nomeFantasia: "ÓTICA VISION - MATRIZ",
+        razaoSocial: "ÓTICA DAVI LTDA",
+        nomeFantasia: "ÓTICA DAVI - MATRIZ",
         cnpj: "12.345.678/0001-00",
         inscricaoEstadual: "123.456.789.000",
         telefone: "(11) 3456-7890",
-        email: "matriz@oticavision.com.br",
+        email: "matriz@oticadavi.com.br",
         endereco: {
             logradouro: "Av. Paulista",
             numero: "1000",
@@ -106,12 +106,12 @@ export const empresas: Empresa[] = [
     {
         id: 2,
         tipo: "Filial",
-        razaoSocial: "ÓTICA VISION LTDA",
-        nomeFantasia: "ÓTICA VISION - SHOPPING CENTER",
+        razaoSocial: "ÓTICA DAVI LTDA",
+        nomeFantasia: "ÓTICA DAVI - SHOPPING CENTER",
         cnpj: "12.345.678/0002-81",
         inscricaoEstadual: "123.456.789.001",
         telefone: "(11) 3456-7891",
-        email: "shopping@oticavision.com.br",
+        email: "shopping@oticadavi.com.br",
         endereco: {
             logradouro: "Av. das Nações Unidas",
             numero: "12901",
@@ -143,12 +143,12 @@ export const empresas: Empresa[] = [
     {
         id: 3,
         tipo: "Filial",
-        razaoSocial: "ÓTICA VISION LTDA",
-        nomeFantasia: "ÓTICA VISION - CENTRO",
+        razaoSocial: "ÓTICA DAVI LTDA",
+        nomeFantasia: "ÓTICA DAVI - CENTRO",
         cnpj: "12.345.678/0003-62",
         inscricaoEstadual: "123.456.789.002",
         telefone: "(11) 3456-7892",
-        email: "centro@oticavision.com.br",
+        email: "centro@oticadavi.com.br",
         endereco: {
             logradouro: "Rua Direita",
             numero: "250",

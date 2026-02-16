@@ -63,7 +63,7 @@ export default function Sidebar() {
     return (
         <aside className="w-48 bg-gray-950 border-r border-gray-800 flex flex-col">
             <div className="p-4 border-b border-gray-800">
-                <h1 className="text-white font-black text-sm tracking-tighter italic">ÓTICA VISION</h1>
+                <h1 className="text-white font-black text-sm tracking-tighter italic">ÓTICA DAVI</h1>
                 <p className="text-[8px] text-emerald-500 font-bold tracking-[0.2em]">{roleName?.toUpperCase() || 'USUÁRIO'}</p>
             </div>
 

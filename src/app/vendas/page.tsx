@@ -90,7 +90,7 @@ export default function VendasPage() {
     const [proximoNumeroVenda, setProximoNumeroVenda] = useState(1);
     const [numeroTSO, setNumeroTSO] = useState(1);
     const [dataHora, setDataHora] = useState("");
-    const [caixaStatus, setCaixaStatus] = useState<"aberto" | "fechado">("aberto");
+    const [caixaStatus, setCaixaStatus] = useState<"aberto" | "fechado">("fechado");
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
     const [carregando, setCarregando] = useState(true);
     const [view, setView] = useState<"pdv" | "historico">("pdv");
@@ -113,7 +113,36 @@ export default function VendasPage() {
         fetchEmpresas();
         fetchVendasCount();
         if (view === "historico") fetchHistorico();
+        fetchStatusCaixa();
     }, [empresaSelecionada, view]);
+
+    // Buscar status do caixa
+    const fetchStatusCaixa = async () => {
+        if (!empresaSelecionada) return;
+
+        try {
+            const hoje = new Date().toISOString().split('T')[0];
+            const { data, error } = await supabase
+                .from('caixas')
+                .select('status')
+                .eq('data', hoje)
+                .eq('empresa_id', empresaSelecionada.id)
+                .maybeSingle();
+
+            if (error) {
+                console.error("Erro ao verificar status do caixa (query):", error.message || error);
+                return;
+            }
+
+            if (data && data.status === 'aberto') {
+                setCaixaStatus("aberto");
+            } else {
+                setCaixaStatus("fechado");
+            }
+        } catch (error: any) {
+            console.error("Erro ao verificar caixa:", error?.message || error || "Erro desconhecido");
+        }
+    };
 
     const fetchVendasCount = async () => {
         const { count, error } = await supabase
@@ -127,56 +156,63 @@ export default function VendasPage() {
 
     const fetchProdutos = async () => {
         setCarregando(true);
-        let query = supabase
-            .from('produtos')
-            .select('*')
-            .eq('ativo', true);
+        try {
+            let query = supabase
+                .from('produtos')
+                .select('*')
+                .eq('ativo', true);
 
-        if (empresaSelecionada) {
-            query = query.eq('empresa_id', empresaSelecionada.id);
+            if (empresaSelecionada) {
+                query = query.eq('empresa_id', empresaSelecionada.id);
+            }
+
+            const { data, error } = await query.order('nome');
+
+            if (error) throw error;
+
+            if (data) {
+                setProdutosSupabase(data);
+
+                // Converter para formato de lentes
+                const lentesAdaptadas: Lente[] = data
+                    .filter(p => p.tipo === 'lente')
+                    .map((p, idx) => ({
+                        id: idx + 1,
+                        codigo: p.codigo || `LNT-${idx + 1}`,
+                        nome: p.nome,
+                        tipo: "Monofocal" as const,
+                        marca: p.marca || "",
+                        material: "CR-39" as const,
+                        quantidade: p.quantidade,
+                        precoUnitario: p.preco_unitario,
+                        status: calcularStatusEstoque(p.quantidade),
+                        supabaseId: p.id,
+                    }));
+
+                // Converter para formato de armações
+                const armacoesAdaptadas: Armacao[] = data
+                    .filter(p => p.tipo === 'armacao')
+                    .map((p, idx) => ({
+                        id: idx + 1,
+                        codigo: p.codigo || `ARM-${idx + 1}`,
+                        nome: p.nome,
+                        marca: p.marca || "",
+                        modelo: "",
+                        cor: "",
+                        quantidade: p.quantidade,
+                        precoUnitario: p.preco_unitario,
+                        status: calcularStatusEstoque(p.quantidade),
+                        supabaseId: p.id,
+                    }));
+
+                setEstoqueLentes(lentesAdaptadas as any);
+                setEstoqueArmacoes(armacoesAdaptadas as any);
+            }
+        } catch (error) {
+            console.error("Erro ao buscar produtos:", error);
+        } finally {
+            setCarregando(false);
         }
-
-        const { data, error } = await query.order('nome');
-
-        if (!error && data) {
-            setProdutosSupabase(data);
-
-            // Converter para formato de lentes
-            const lentesAdaptadas: Lente[] = data
-                .filter(p => p.tipo === 'lente')
-                .map((p, idx) => ({
-                    id: idx + 1,
-                    codigo: p.codigo || `LNT-${idx + 1}`,
-                    nome: p.nome,
-                    tipo: "Monofocal" as const,
-                    marca: p.marca || "",
-                    material: "CR-39" as const,
-                    quantidade: p.quantidade,
-                    precoUnitario: p.preco_unitario,
-                    status: calcularStatusEstoque(p.quantidade),
-                    supabaseId: p.id,
-                }));
-
-            // Converter para formato de armações
-            const armacoesAdaptadas: Armacao[] = data
-                .filter(p => p.tipo === 'armacao')
-                .map((p, idx) => ({
-                    id: idx + 1,
-                    codigo: p.codigo || `ARM-${idx + 1}`,
-                    nome: p.nome,
-                    marca: p.marca || "",
-                    modelo: "",
-                    cor: "",
-                    quantidade: p.quantidade,
-                    precoUnitario: p.preco_unitario,
-                    status: calcularStatusEstoque(p.quantidade),
-                    supabaseId: p.id,
-                }));
-
-            setEstoqueLentes(lentesAdaptadas as any);
-            setEstoqueArmacoes(armacoesAdaptadas as any);
-        }
-        setCarregando(false);
     };
 
     // Buscar receitas (consultas com tipo_lente) do Supabase
@@ -292,6 +328,11 @@ export default function VendasPage() {
     const handleBaixarPagamento = async (vendaId: string, valor: number, forma: string) => {
         if (valor <= 0) {
             setMensagem({ tipo: "erro", texto: "INFORME UM VALOR VÁLIDO PARA BAIXA" });
+            return;
+        }
+
+        if (caixaStatus !== "aberto") {
+            setMensagem({ tipo: "erro", texto: "CAIXA FECHADO. ABRA O CAIXA NO FINANCEIRO PARA RECEBER." });
             return;
         }
 
@@ -612,6 +653,11 @@ export default function VendasPage() {
     const handleFinalizarVenda = async () => {
         if (venda.itens.length === 0) {
             setMensagem({ tipo: "erro", texto: "ADICIONE ITENS À VENDA" });
+            return;
+        }
+
+        if (caixaStatus !== "aberto") {
+            setMensagem({ tipo: "erro", texto: "CAIXA FECHADO. ABRA O CAIXA NO FINANCEIRO PARA FINALIZAR A VENDA." });
             return;
         }
 

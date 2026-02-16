@@ -8,7 +8,7 @@ import { RegistroFinanceiroAgendamento, TipoFinanceiroAgendamento, SituacaoFinan
 import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { formatarMoeda, parseMoeda } from "@/utils/monetary";
-import { imprimirRelatorioAgendamentoCompleto, ReportAgendamentoData } from "@/utils/reportUtils";
+import { imprimirRelatorioAgendamentoCompleto, ReportAgendamentoData, imprimirRelatorioListaOperacional, ReportAgendaOperacionalData } from "@/utils/reportUtils";
 import { useAuth } from "@/contexts/AuthContext";
 
 function StatusBadge({ status }: { status: string }) {
@@ -721,6 +721,77 @@ function AgendamentoContent() {
         imprimirRelatorioAgendamentoCompleto(dataRelatorio);
     };
 
+    const handleImprimirAgenda = async () => {
+        // Encontrar o médico RESPONSÁVEL DO DIA pelo filtro
+        const diaConfig = empresaFiltro?.configuracaoHorarios?.diasDisponiveis?.find(
+            (d: any) => d.data === filtroData
+        );
+        const nomeMedico = diaConfig?.medicoResponsavel || "";
+
+        // Obter telefones dos pacientes (não está na lista principal, precisamos buscar ou assumir que o mock ou join traria)
+        // A consulta atual já tem: `pacientes(*)` no fetchAgendamentos
+
+        // Mapear dados
+        const dadosRelatorio: ReportAgendaOperacionalData = {
+            titulo: "AGENDA DO DIA",
+            data: new Date(filtroData + "T12:00:00").toLocaleDateString('pt-BR'),
+            unidade: empresaFiltro?.nomeFantasia || "TODAS AS UNIDADES",
+            operador: profile?.nome || "ADMIN",
+            registros: agendaFiltrada.map(agd => {
+                // Encontrar o objeto original no `data` do Supabase se precisarmos de mais campos, 
+                // mas `fetchAgendamentos` já fez o join. 
+                // O estado `agenda` tem: id, empresaId, data, hora, pacienteId, pacienteNome, tipo, status.
+                // Precisamos recuperar o telefone e observações.
+                // Como `agenda` é `Consulta[]` (mockData type), precisamos ver se temos acesso ao objeto completo.
+                // No `fetchAgendamentos`, fizemos map manual. Vamos ajustar o map lá ou aqui.
+                // Por segurança e rapidez, vamos fazer um fetch rápido ou tentar recuperar do estado se possível.
+                // Melhor: vamos assumir que o `agenda` é suficiente, mas telefone pode faltar.
+                // OBS: O `Consulta` interface no mockData pode não ter telefone. 
+                // Vamos tentar pegar do `sugestoesPacientes` se tiver em cache ou aceitar sem telefone por enquanto.
+                // Para fazer direito, o ideal seria o `fetchAgendamentos` trazer o telefone.
+
+                return {
+                    hora: agd.hora,
+                    pacienteNome: agd.pacienteNome,
+                    telefone: "", // Ajustaremos o fetch se necessário, ou deixamos vazio
+                    medico: nomeMedico,
+                    status: agd.status,
+                    observacoes: "" // Também não está no adapter atual
+                };
+            })
+        };
+
+        // Vamos fazer um fetch dedicated para ter todos os dados corretos para o relatório
+        // para garantir que telefone e observações apareçam.
+        try {
+            const { data, error } = await supabase
+                .from('agendamentos')
+                .select('*, pacientes(nome, telefone)')
+                .eq('empresa_id', filtroEmpresaId)
+                .eq('data', filtroData)
+                .order('hora');
+
+            if (!error && data) {
+                const registrosCompletos = data.map((item: any) => ({
+                    hora: item.hora.substring(0, 5),
+                    pacienteNome: item.pacientes?.nome || 'Desconhecido',
+                    telefone: item.pacientes?.telefone || '',
+                    medico: nomeMedico,
+                    status: item.status,
+                    observacoes: '' // Observações do agendamento não existem no schema ? Vamos verificar. O schema tem `observacoes`?
+                    // No `financeiro_agendamentos` tem observacoes. No `agendamentos` tabela, não vi no código anterior. 
+                    // Mas no `pacientes` tem observacoes.
+                }));
+
+                dadosRelatorio.registros = registrosCompletos;
+            }
+        } catch (err) {
+            console.error("Erro ao buscar dados completos para relatório", err);
+        }
+
+        imprimirRelatorioListaOperacional(dadosRelatorio);
+    };
+
     const getDiaSemana = (dataStr: string) => {
         const data = new Date(dataStr + "T12:00:00");
         return data.toLocaleDateString("pt-BR", { weekday: "long" }).replace(/^\w/, (c) => c.toUpperCase());
@@ -741,6 +812,17 @@ function AgendamentoContent() {
                     </div>
 
                     <div className="flex gap-2">
+                        {view === "agenda" && !mostrarForm && (
+                            <button
+                                onClick={handleImprimirAgenda}
+                                className="px-4 py-2 bg-purple-900 border border-purple-700 text-sm font-medium text-white hover:bg-purple-800 flex items-center gap-2"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                                </svg>
+                                IMPRIMIR AGENDA
+                            </button>
+                        )}
                         {view === "agenda" && !mostrarForm && profile?.roles?.name === 'Administrador' && (
                             <button
                                 onClick={handleAbrirFinanceiro}

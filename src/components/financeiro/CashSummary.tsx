@@ -125,7 +125,7 @@ export default function CashSummary({
                                 <div className="bg-gray-800/50 p-3">
                                     <div className="text-gray-500">Disp. em Caixa</div>
                                     <div className="text-green-500 font-mono text-lg mt-1">
-                                        R$ {formatarMoeda(totalRecebido || 0)}
+                                        R$ {formatarMoeda(saldoFinal || 0)}
                                     </div>
                                 </div>
                             </div>

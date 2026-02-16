@@ -42,11 +42,41 @@ export default function EmpresasPage() {
     const [empresaSelecionada, setEmpresaSelecionada] = useState<Empresa | null>(null);
     const [formData, setFormData] = useState<Omit<Empresa, "id" | "dataCadastro">>(empresaVazia);
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
+    const [processando, setProcessando] = useState(false);
 
     // Buscar empresas do Supabase
     useEffect(() => {
         fetchEmpresas();
     }, []);
+
+    const adaptarEmpresa = (e: any): Empresa => ({
+        id: e.id,
+        tipo: e.tipo || 'Filial',
+        razaoSocial: e.razao_social || '',
+        nomeFantasia: e.nome_fantasia || '',
+        cnpj: e.cnpj || '',
+        inscricaoEstadual: e.inscricao_estadual || '',
+        telefone: e.telefone || '',
+        email: e.email || '',
+        endereco: e.endereco || {
+            logradouro: '',
+            numero: '',
+            bairro: '',
+            cidade: e.cidade || '',
+            estado: e.estado || '',
+            cep: ''
+        },
+        responsavel: e.responsavel || '',
+        ativo: e.ativo ?? true,
+        dataCadastro: e.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+        configuracaoHorarios: e.configuracao_horarios,
+        regimeTributario: e.regime_tributario,
+        certificadoSenha: e.certificado_senha,
+        cscId: e.csc_id,
+        cscToken: e.csc_token,
+        ambiente: e.ambiente,
+        certificadoB64: e.certificado_b64,
+    });
 
     const fetchEmpresas = async () => {
         setCarregando(true);
@@ -56,35 +86,7 @@ export default function EmpresasPage() {
             .order('id', { ascending: true });
 
         if (!error && data) {
-            const adapted: Empresa[] = data.map(e => ({
-                id: e.id,
-                tipo: e.tipo || 'Filial',
-                razaoSocial: e.razao_social || '',
-                nomeFantasia: e.nome_fantasia || '',
-                cnpj: e.cnpj || '',
-                inscricaoEstadual: e.inscricao_estadual || '',
-                telefone: e.telefone || '',
-                email: e.email || '',
-                endereco: e.endereco || {
-                    logradouro: '',
-                    numero: '',
-                    bairro: '',
-                    cidade: e.cidade || '',
-                    estado: e.estado || '',
-                    cep: ''
-                },
-                responsavel: e.responsavel || '',
-                ativo: e.ativo ?? true,
-                dataCadastro: e.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-                configuracaoHorarios: e.configuracao_horarios,
-                regimeTributario: e.regime_tributario,
-                certificadoSenha: e.certificado_senha,
-                cscId: e.csc_id,
-                cscToken: e.csc_token,
-                ambiente: e.ambiente,
-                certificadoB64: e.certificado_b64,
-            }));
-            setEmpresas(adapted);
+            setEmpresas(data.map(adaptarEmpresa));
         }
         setCarregando(false);
     };
@@ -137,67 +139,79 @@ export default function EmpresasPage() {
     };
 
     const handleSalvar = async () => {
-        if (!formData.razaoSocial || !formData.nomeFantasia || !formData.cnpj) {
-            mostrarMensagem("erro", "PREENCHA OS CAMPOS OBRIGATÓRIOS");
-            return;
-        }
+        if (processando) return;
 
-        // Preparar dados para o Supabase
-        const dadosSupabase = {
-            tipo: formData.tipo,
-            razao_social: formData.razaoSocial,
-            nome_fantasia: formData.nomeFantasia,
-            cnpj: formData.cnpj,
-            inscricao_estadual: formData.inscricaoEstadual,
-            telefone: formData.telefone,
-            email: formData.email,
-            endereco: formData.endereco,
-            cidade: formData.endereco.cidade,
-            estado: formData.endereco.estado,
-            responsavel: formData.responsavel,
-            ativo: formData.ativo,
-            regime_tributario: (formData as any).regimeTributario,
-            certificado_senha: (formData as any).certificadoSenha,
-            certificado_b64: (formData as any).certificadoB64,
-            csc_id: (formData as any).cscId,
-            csc_token: (formData as any).cscToken,
-            ambiente: (formData as any).ambiente,
-        };
+        const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_SUPABASE")), ms));
 
-        if (modo === "cadastro") {
-            const { data, error } = await supabase
-                .from('empresas')
-                .insert(dadosSupabase)
-                .select()
-                .single();
+        try {
+            setProcessando(true);
+            console.log("Fluxo salvar iniciado. Modo:", modo);
 
-            if (error) {
-                mostrarMensagem("erro", "ERRO AO CADASTRAR EMPRESA");
-                console.error(error);
+            if (!formData.razaoSocial || !formData.nomeFantasia || !formData.cnpj) {
+                mostrarMensagem("erro", "PREENCHA OS CAMPOS OBRIGATÓRIOS (Razão Social, Nome Fantasia, CNPJ)");
+                window.scrollTo({ top: 0, behavior: 'smooth' });
                 return;
             }
 
-            await fetchEmpresas();
-            mostrarMensagem("sucesso", "EMPRESA CADASTRADA COM SUCESSO");
-        } else if (modo === "edicao" && empresaSelecionada) {
-            const { error } = await supabase
-                .from('empresas')
-                .update(dadosSupabase)
-                .eq('id', empresaSelecionada.id);
+            const dadosSupabase = {
+                tipo: formData.tipo,
+                razao_social: formData.razaoSocial,
+                nome_fantasia: formData.nomeFantasia,
+                cnpj: formData.cnpj,
+                inscricao_estadual: formData.inscricaoEstadual,
+                telefone: formData.telefone,
+                email: formData.email,
+                endereco: formData.endereco,
+                cidade: formData.endereco.cidade,
+                estado: formData.endereco.estado,
+                responsavel: formData.responsavel,
+                ativo: formData.ativo,
+                regime_tributario: (formData as any).regimeTributario,
+            };
 
-            if (error) {
-                mostrarMensagem("erro", "ERRO AO ATUALIZAR EMPRESA");
-                console.error(error);
+            let resultado;
+
+            if (modo === "cadastro") {
+                console.log("Inserindo nova empresa...");
+                const call = supabase.from('empresas').insert(dadosSupabase).select().single();
+                resultado = await Promise.race([call, timeout(15000)]) as any;
+
+                if (resultado.error) throw resultado.error;
+
+                const nova = adaptarEmpresa(resultado.data);
+                setEmpresas(prev => [...prev, nova]);
+                mostrarMensagem("sucesso", "EMPRESA CADASTRADA COM SUCESSO");
+            } else if (modo === "edicao" && empresaSelecionada) {
+                console.log("Atualizando empresa ID:", empresaSelecionada.id);
+                const call = supabase.from('empresas').update(dadosSupabase).eq('id', empresaSelecionada.id).select().single();
+                resultado = await Promise.race([call, timeout(15000)]) as any;
+
+                if (resultado.error) throw resultado.error;
+
+                const editada = adaptarEmpresa(resultado.data);
+                console.log("Dados atualizados recebidos:", editada);
+
+                setEmpresas(prev => prev.map(e => e.id === editada.id ? editada : e));
+                mostrarMensagem("sucesso", "EMPRESA ATUALIZADA COM SUCESSO");
+            } else {
                 return;
             }
 
-            await fetchEmpresas();
-            mostrarMensagem("sucesso", "EMPRESA ATUALIZADA COM SUCESSO");
-        }
+            setModo("lista");
+            setFormData(empresaVazia);
+            setEmpresaSelecionada(null);
 
-        setModo("lista");
-        setFormData(empresaVazia);
-        setEmpresaSelecionada(null);
+        } catch (err: any) {
+            console.error("Erro em handleSalvar:", err);
+            if (err.message === "TIMEOUT_SUPABASE") {
+                mostrarMensagem("erro", "O SERVIDOR DEMOROU MUITO PARA RESPONDER. TENTE NOVAMENTE OU RECARREGUE A PÁGINA.");
+            } else {
+                mostrarMensagem("erro", "ERRO AO SALVAR: " + (err.message || "Erro desconhecido"));
+            }
+        } finally {
+            setProcessando(false);
+            console.log("Fluxo salvar finalizado.");
+        }
     };
 
     const handleCancelar = () => {
@@ -463,174 +477,190 @@ export default function EmpresasPage() {
                             medicosDisponiveis={matriz?.configuracaoHorarios?.medicos || []}
                         />
                     ) : (
-                        <div className="grid grid-cols-2 gap-6">
-                            <Panel title={modo === "cadastro" ? "NOVA EMPRESA" : "EDITAR EMPRESA"}>
-                                <div className="p-4 space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">TIPO <span className="text-red-500">*</span></label>
-                                            <select
-                                                value={formData.tipo}
-                                                onChange={(e) => setFormData({ ...formData, tipo: e.target.value as TipoEmpresa })}
-                                                disabled={matriz !== undefined && formData.tipo === "Matriz" && modo === "cadastro"}
-                                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none disabled:opacity-50"
-                                            >
-                                                <option value="Matriz" disabled={matriz !== undefined && modo === "cadastro"}>Matriz</option>
-                                                <option value="Filial">Filial</option>
-                                            </select>
-                                        </div>
-                                        <div className="flex items-end">
-                                            <label className="flex items-center gap-2 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={formData.ativo}
-                                                    onChange={(e) => setFormData({ ...formData, ativo: e.target.checked })}
-                                                    className="w-4 h-4 bg-gray-800 border-gray-700 text-green-500"
-                                                />
-                                                <span className="text-sm text-white">ATIVA</span>
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <CampoForm label="RAZÃO SOCIAL" value={formData.razaoSocial} onChange={(v) => setFormData({ ...formData, razaoSocial: v })} required />
-                                    <CampoForm label="NOME FANTASIA" value={formData.nomeFantasia} onChange={(v) => setFormData({ ...formData, nomeFantasia: v })} required />
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm label="CNPJ" value={formData.cnpj} onChange={(v) => setFormData({ ...formData, cnpj: v })} placeholder="00.000.000/0000-00" required />
-                                        <CampoForm label="INSCRIÇÃO ESTADUAL" value={formData.inscricaoEstadual} onChange={(v) => setFormData({ ...formData, inscricaoEstadual: v })} />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm label="TELEFONE" value={formData.telefone} onChange={(v) => setFormData({ ...formData, telefone: v })} type="tel" placeholder="(00) 0000-0000" />
-                                        <CampoForm label="EMAIL" value={formData.email} onChange={(v) => setFormData({ ...formData, email: v })} type="email" />
-                                    </div>
-
-                                    <CampoForm label="RESPONSÁVEL" value={formData.responsavel} onChange={(v) => setFormData({ ...formData, responsavel: v })} />
-                                </div>
-                            </Panel>
-
-                            <Panel title="ENDEREÇO">
-                                <div className="p-4 space-y-4">
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="col-span-2">
-                                            <CampoForm label="LOGRADOURO" value={formData.endereco.logradouro} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, logradouro: v } })} />
-                                        </div>
-                                        <CampoForm label="NÚMERO" value={formData.endereco.numero} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, numero: v } })} />
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm label="COMPLEMENTO" value={formData.endereco.complemento || ""} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, complemento: v } })} />
-                                        <CampoForm label="BAIRRO" value={formData.endereco.bairro} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, bairro: v } })} />
-                                    </div>
-
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="col-span-1">
-                                            <CampoForm label="CEP" value={formData.endereco.cep} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, cep: v } })} placeholder="00000-000" />
-                                        </div>
-                                        <CampoForm label="CIDADE" value={formData.endereco.cidade} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, cidade: v } })} />
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">ESTADO</label>
-                                            <select
-                                                value={formData.endereco.estado}
-                                                onChange={(e) => setFormData({ ...formData, endereco: { ...formData.endereco, estado: e.target.value } })}
-                                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                            >
-                                                <option value="">UF</option>
-                                                {["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"].map(uf => (
-                                                    <option key={uf} value={uf}>{uf}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            </Panel>
-
-                            {/* Configurações Fiscais */}
-                            <div className="col-span-2">
-                                <Panel title="CONFIGURAÇÕES FISCAIS (NF-e/NFC-e)">
-                                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="space-y-4">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div>
-                                                    <label className="text-xs text-gray-500 block mb-1">REGIME TRIBUTÁRIO</label>
-                                                    <select
-                                                        value={(formData as any).regimeTributario}
-                                                        onChange={(e) => setFormData({ ...formData, regimeTributario: e.target.value } as any)}
-                                                        className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                                    >
-                                                        <option value="Simples Nacional">Simples Nacional</option>
-                                                        <option value="Simples Nacional - Excesso de Sublimite">Simples Nacional - Excesso de Sublimite</option>
-                                                        <option value="Regime Normal">Regime Normal</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs text-gray-500 block mb-1">AMBIENTE SEFAZ</label>
-                                                    <select
-                                                        value={(formData as any).ambiente}
-                                                        onChange={(e) => setFormData({ ...formData, ambiente: e.target.value } as any)}
-                                                        className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                                    >
-                                                        <option value="Homologação">Homologação (Testes)</option>
-                                                        <option value="Produção">Produção (Real)</option>
-                                                    </select>
-                                                </div>
+                        <>
+                            <div className="grid grid-cols-2 gap-6">
+                                <Panel title={modo === "cadastro" ? "NOVA EMPRESA" : "EDITAR EMPRESA"}>
+                                    <div className="p-4 space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-xs text-gray-500 block mb-1">TIPO <span className="text-red-500">*</span></label>
+                                                <select
+                                                    value={formData.tipo}
+                                                    onChange={(e) => setFormData({ ...formData, tipo: e.target.value as TipoEmpresa })}
+                                                    disabled={matriz !== undefined && formData.tipo === "Matriz" && modo === "cadastro"}
+                                                    className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none disabled:opacity-50"
+                                                >
+                                                    <option value="Matriz" disabled={matriz !== undefined && modo === "cadastro"}>Matriz</option>
+                                                    <option value="Filial">Filial</option>
+                                                </select>
                                             </div>
-
-                                            <div className="p-4 bg-gray-900/30 border border-gray-800 rounded">
-                                                <h3 className="text-xs font-bold text-gray-400 mb-3 tracking-widest uppercase">NFC-e (Consumidor)</h3>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <CampoForm label="CSC ID" value={(formData as any).cscId} onChange={(v) => setFormData({ ...formData, cscId: v } as any)} placeholder="000001" />
-                                                    <CampoForm label="CSC TOKEN" value={(formData as any).cscToken} onChange={(v) => setFormData({ ...formData, cscToken: v } as any)} />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <div className="p-6 bg-gray-900/50 border border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-center">
-                                                <label className="text-xs font-bold text-gray-400 block mb-4 uppercase tracking-widest text-green-500">Certificado Digital (.pfx)</label>
-                                                <div className="w-full">
+                                            <div className="flex items-end">
+                                                <label className="flex items-center gap-2 cursor-pointer">
                                                     <input
-                                                        type="file"
-                                                        accept=".pfx"
-                                                        id="cert-upload"
-                                                        onChange={handleFileChange}
-                                                        className="hidden"
+                                                        type="checkbox"
+                                                        checked={formData.ativo}
+                                                        onChange={(e) => setFormData({ ...formData, ativo: e.target.checked })}
+                                                        className="w-4 h-4 bg-gray-800 border-gray-700 text-green-500"
                                                     />
-                                                    <label
-                                                        htmlFor="cert-upload"
-                                                        className="cursor-pointer inline-block w-full py-3 px-6 bg-gray-800 border border-gray-700 text-xs font-bold text-white hover:bg-gray-700 transition-colors uppercase"
-                                                    >
-                                                        {(formData as any).certificadoB64 ? "✓ TROCAR CERTIFICADO DIGITAL" : "📁 SELECIONAR ARQUIVO .PFX"}
-                                                    </label>
-                                                    {(formData as any).certificadoB64 && (
-                                                        <div className="mt-2 text-[10px] text-green-500 font-bold uppercase animate-pulse">
-                                                            Arquivo carregado com sucesso
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                    <span className="text-sm text-white">ATIVA</span>
+                                                </label>
                                             </div>
+                                        </div>
 
-                                            <CampoForm label="SENHA DO CERTIFICADO" value={(formData as any).certificadoSenha} onChange={(v) => setFormData({ ...formData, certificadoSenha: v } as any)} />
+                                        <CampoForm label="RAZÃO SOCIAL" value={formData.razaoSocial} onChange={(v) => setFormData({ ...formData, razaoSocial: v })} required />
+                                        <CampoForm label="NOME FANTASIA" value={formData.nomeFantasia} onChange={(v) => setFormData({ ...formData, nomeFantasia: v })} required />
 
-                                            <div className="pt-6 flex gap-3">
-                                                <button
-                                                    onClick={handleSalvar}
-                                                    className="flex-1 px-4 py-3 bg-green-600 border border-green-500 text-sm font-bold text-white hover:bg-green-500 transition-all shadow-[0_0_15px_rgba(34,197,94,0.2)]"
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <CampoForm label="CNPJ" value={formData.cnpj} onChange={(v) => setFormData({ ...formData, cnpj: v })} placeholder="00.000.000/0000-00" required />
+                                            <CampoForm label="INSCRIÇÃO ESTADUAL" value={formData.inscricaoEstadual} onChange={(v) => setFormData({ ...formData, inscricaoEstadual: v })} />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <CampoForm label="TELEFONE" value={formData.telefone} onChange={(v) => setFormData({ ...formData, telefone: v })} type="tel" placeholder="(00) 0000-0000" />
+                                            <CampoForm label="EMAIL" value={formData.email} onChange={(v) => setFormData({ ...formData, email: v })} type="email" />
+                                        </div>
+
+                                        <CampoForm label="RESPONSÁVEL" value={formData.responsavel} onChange={(v) => setFormData({ ...formData, responsavel: v })} />
+                                    </div>
+                                </Panel>
+
+                                <Panel title="ENDEREÇO">
+                                    <div className="p-4 space-y-4">
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div className="col-span-2">
+                                                <CampoForm label="LOGRADOURO" value={formData.endereco.logradouro} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, logradouro: v } })} />
+                                            </div>
+                                            <CampoForm label="NÚMERO" value={formData.endereco.numero} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, numero: v } })} />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <CampoForm label="COMPLEMENTO" value={formData.endereco.complemento || ""} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, complemento: v } })} />
+                                            <CampoForm label="BAIRRO" value={formData.endereco.bairro} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, bairro: v } })} />
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div className="col-span-1">
+                                                <CampoForm label="CEP" value={formData.endereco.cep} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, cep: v } })} placeholder="00000-000" />
+                                            </div>
+                                            <CampoForm label="CIDADE" value={formData.endereco.cidade} onChange={(v) => setFormData({ ...formData, endereco: { ...formData.endereco, cidade: v } })} />
+                                            <div>
+                                                <label className="text-xs text-gray-500 block mb-1">ESTADO</label>
+                                                <select
+                                                    value={formData.endereco.estado}
+                                                    onChange={(e) => setFormData({ ...formData, endereco: { ...formData.endereco, estado: e.target.value } })}
+                                                    className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
                                                 >
-                                                    SALVAR ALTERAÇÕES
-                                                </button>
-                                                <button
-                                                    onClick={handleCancelar}
-                                                    className="px-6 py-3 bg-gray-800 border border-gray-700 text-sm font-bold text-white hover:bg-gray-700"
-                                                >
-                                                    CANCELAR
-                                                </button>
+                                                    <option value="">UF</option>
+                                                    {["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"].map(uf => (
+                                                        <option key={uf} value={uf}>{uf}</option>
+                                                    ))}
+                                                </select>
                                             </div>
                                         </div>
                                     </div>
                                 </Panel>
+
+                                {/* Configurações Fiscais */}
+                                <div className="col-span-2">
+                                    <Panel title="CONFIGURAÇÕES FISCAIS (NF-e/NFC-e)">
+                                        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="text-xs text-gray-500 block mb-1">REGIME TRIBUTÁRIO</label>
+                                                        <select
+                                                            value={(formData as any).regimeTributario}
+                                                            onChange={(e) => setFormData({ ...formData, regimeTributario: e.target.value } as any)}
+                                                            className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                                                        >
+                                                            <option value="Simples Nacional">Simples Nacional</option>
+                                                            <option value="Simples Nacional - Excesso de Sublimite">Simples Nacional - Excesso de Sublimite</option>
+                                                            <option value="Regime Normal">Regime Normal</option>
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-xs text-gray-500 block mb-1">AMBIENTE SEFAZ</label>
+                                                        <select
+                                                            value={(formData as any).ambiente}
+                                                            onChange={(e) => setFormData({ ...formData, ambiente: e.target.value } as any)}
+                                                            className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                                                        >
+                                                            <option value="Homologação">Homologação (Testes)</option>
+                                                            <option value="Produção">Produção (Real)</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div className="p-4 bg-gray-900/30 border border-gray-800 rounded">
+                                                    <h3 className="text-xs font-bold text-gray-400 mb-3 tracking-widest uppercase">NFC-e (Consumidor)</h3>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <CampoForm label="CSC ID" value={(formData as any).cscId} onChange={(v) => setFormData({ ...formData, cscId: v } as any)} placeholder="000001" />
+                                                        <CampoForm label="CSC TOKEN" value={(formData as any).cscToken} onChange={(v) => setFormData({ ...formData, cscToken: v } as any)} />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div className="p-6 bg-gray-900/50 border border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-center">
+                                                    <label className="text-xs font-bold text-gray-400 block mb-4 uppercase tracking-widest text-green-500">Certificado Digital (.pfx)</label>
+                                                    <div className="w-full">
+                                                        <input
+                                                            type="file"
+                                                            accept=".pfx"
+                                                            id="cert-upload"
+                                                            onChange={handleFileChange}
+                                                            className="hidden"
+                                                        />
+                                                        <label
+                                                            htmlFor="cert-upload"
+                                                            className="cursor-pointer inline-block w-full py-3 px-6 bg-gray-800 border border-gray-700 text-xs font-bold text-white hover:bg-gray-700 transition-colors uppercase"
+                                                        >
+                                                            {(formData as any).certificadoB64 ? "✓ TROCAR CERTIFICADO DIGITAL" : "📁 SELECIONAR ARQUIVO .PFX"}
+                                                        </label>
+                                                        {(formData as any).certificadoB64 && (
+                                                            <div className="mt-2 text-[10px] text-green-500 font-bold uppercase animate-pulse">
+                                                                Arquivo carregado com sucesso
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <CampoForm label="SENHA DO CERTIFICADO" value={(formData as any).certificadoSenha} onChange={(v) => setFormData({ ...formData, certificadoSenha: v } as any)} />
+
+                                                {/* Botões movidos para barra inferior */}
+                                            </div>
+                                        </div>
+                                    </Panel>
+                                </div>
                             </div>
-                        </div>
+
+                            {/* Barra de Ações Global */}
+                            <div className="mt-6 pt-6 border-t border-gray-800 flex flex-col items-end gap-4">
+                                {mensagem && (
+                                    <div className={`px-4 py-2 text-sm font-medium rounded ${mensagem.tipo === "sucesso"
+                                        ? "bg-green-900/50 border border-green-700 text-green-400"
+                                        : "bg-red-900/50 border border-red-700 text-red-400"
+                                        }`}>
+                                        {mensagem.texto}
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-end gap-4 w-full">
+                                    <button
+                                        onClick={handleCancelar}
+                                        className="px-6 py-3 bg-gray-800 border border-gray-700 text-sm font-bold text-white hover:bg-gray-700 rounded"
+                                    >
+                                        CANCELAR
+                                    </button>
+                                    <button
+                                        onClick={handleSalvar}
+                                        disabled={processando}
+                                        className={`px-8 py-3 bg-green-600 border border-green-500 text-sm font-bold text-white hover:bg-green-500 transition-all shadow-[0_0_15px_rgba(34,197,94,0.2)] rounded ${processando ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    >
+                                        {processando ? "SALVANDO..." : (modo === "cadastro" ? "CADASTRAR EMPRESA" : "SALVAR ALTERAÇÕES")}
+                                    </button>
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
             </div>

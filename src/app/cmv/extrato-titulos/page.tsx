@@ -76,18 +76,24 @@ export default function ExtratoTitulosPage() {
 
     const fetchData = async () => {
         setLoading(true);
-        let query = supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false });
+        try {
+            let query = supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false });
 
-        if (filtros.status !== "todos") query = query.eq("status", filtros.status);
-        if (filtros.empresa_id) query = query.eq("empresa_id", parseInt(filtros.empresa_id));
-        if (filtros.fornecedor_id) query = query.eq("fornecedor_id", parseInt(filtros.fornecedor_id));
-        if (filtros.tipo_id) query = query.eq("tipo_id", parseInt(filtros.tipo_id));
-        if (filtros.dataInicio) query = query.gte("data_vencimento", filtros.dataInicio);
-        if (filtros.dataFim) query = query.lte("data_vencimento", filtros.dataFim);
+            if (filtros.status !== "todos") query = query.eq("status", filtros.status);
+            if (filtros.empresa_id) query = query.eq("empresa_id", parseInt(filtros.empresa_id));
+            if (filtros.fornecedor_id) query = query.eq("fornecedor_id", parseInt(filtros.fornecedor_id));
+            if (filtros.tipo_id) query = query.eq("tipo_id", parseInt(filtros.tipo_id));
+            if (filtros.dataInicio) query = query.gte("data_vencimento", filtros.dataInicio);
+            if (filtros.dataFim) query = query.lte("data_vencimento", filtros.dataFim);
 
-        const { data } = await query;
-        if (data) setTitulos(data);
-        setLoading(false);
+            const { data, error } = await query;
+            if (error) throw error;
+            if (data) setTitulos(data);
+        } catch (error) {
+            console.error("Erro ao carregar títulos:", error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const formatarValor = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
