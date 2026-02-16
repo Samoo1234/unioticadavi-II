@@ -34,8 +34,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const isPublicRoute = pathname?.startsWith('/verificar');
 
+    const lastProfileUserId = React.useRef<string | null>(null);
+
     const fetchProfileData = async (userId: string) => {
+        // Avoid redundant fetches if profile for this user is already loaded
+        if (lastProfileUserId.current === userId && profile) {
+            setLoading(false);
+            return;
+        }
+
         try {
+            console.log(`[Auth] Buscando perfil para: ${userId}`);
             const { data, error } = await supabase
                 .from('profiles')
                 .select(`
@@ -54,15 +63,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single();
 
             if (error) {
-                console.error('Error fetching profile:', error);
-                // Clear profile state if fetching fails to avoid stale data
-                setProfile(null);
-                setPermissions([]);
-                setRoleName(null);
+                console.error('[Auth] Erro ao buscar perfil:', error.message);
+                // Keep existing profile if it's a transient error, 
+                // but if we have NO profile, we must indicate loading is done
+                if (!profile) {
+                    setProfile(null);
+                    setPermissions([]);
+                    setRoleName(null);
+                }
                 return;
             }
 
             if (data) {
+                console.log('[Auth] Perfil carregado com sucesso');
+                lastProfileUserId.current = userId;
                 setProfile(data);
                 const r = data.roles as any;
                 if (r) {
@@ -88,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 }
             }
         } catch (err) {
-            console.error('Fatal error in fetchProfileData:', err);
+            console.error('[Auth] Erro fatal no fetchProfileData:', err);
         } finally {
             setLoading(false);
         }
@@ -98,15 +112,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         let mounted = true;
 
-        const handleSession = async (session: any) => {
+        const handleSession = async (session: any, eventName = 'NONE') => {
             if (!mounted) return;
+            console.log(`[Auth] Evento: ${eventName} | Usuário: ${session?.user?.id || 'Nenhum'}`);
 
             if (session?.user) {
-                if (session.user.id !== user?.id) {
-                    setUser(session.user);
-                    await fetchProfileData(session.user.id);
-                }
+                setUser(session.user);
+                await fetchProfileData(session.user.id);
             } else {
+                console.log('[Auth] Sessão limpa');
+                lastProfileUserId.current = null;
                 setUser(null);
                 setProfile(null);
                 setPermissions([]);
@@ -118,24 +133,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Initialize session on mount
         supabase.auth.getSession().then(({ data: { session } }) => {
-            handleSession(session);
+            handleSession(session, 'INITIAL_SESSION');
         });
 
-        // Listen for all auth changes (including SIGN_OUT, TOKEN_REFRESHED)
+        // Listen for all auth changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
-                // Force immediate clean up on specific events
-                await handleSession(session);
-            } else {
-                await handleSession(session);
-            }
+            await handleSession(session, event);
         });
 
         return () => {
             mounted = false;
             subscription.unsubscribe();
         };
-    }, []); // Only run once on mount
+    }, []);
 
     // 3. Route Protection (Runs on changes)
     useEffect(() => {
