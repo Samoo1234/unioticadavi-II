@@ -21,6 +21,7 @@ export default function AuditAdminPage() {
     const { hasPermission } = useAuth();
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [loading, setLoading] = useState(true);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
 
     useEffect(() => {
         if (hasPermission('admin', 'view_audit')) {
@@ -83,27 +84,51 @@ export default function AuditAdminPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-800 text-gray-400">
                             {logs.map((log) => (
-                                <tr key={log.id} className="hover:bg-gray-800/20 transition-colors">
-                                    <td className="px-6 py-4 font-mono text-gray-500">
-                                        {new Date(log.created_at).toLocaleString('pt-BR')}
-                                    </td>
-                                    <td className="px-6 py-4 text-white">
-                                        {log.profiles?.full_name || 'Sistema'}
-                                    </td>
-                                    <td className="px-6 py-4 text-emerald-500">{log.module}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-0.5 rounded ${log.action === 'DELETE' ? 'bg-red-900/30 text-red-500' :
-                                            log.action === 'CREATE' ? 'bg-green-900/30 text-green-500' :
-                                                'bg-blue-900/30 text-blue-500'
-                                            }`}>
-                                            {log.action}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 font-mono text-[9px]">{log.record_id || '-'}</td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-gray-600 hover:text-white transition-colors underline decoration-dotted">VER JSON</button>
-                                    </td>
-                                </tr>
+                                <>
+                                    <tr key={log.id} className="hover:bg-gray-800/20 transition-colors cursor-pointer" onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}>
+                                        <td className="px-6 py-4 font-mono text-gray-500">
+                                            {new Date(log.created_at).toLocaleString('pt-BR')}
+                                        </td>
+                                        <td className="px-6 py-4 text-white">
+                                            {log.profiles?.full_name || 'Sistema'}
+                                        </td>
+                                        <td className="px-6 py-4 text-emerald-500">{log.module}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-0.5 rounded ${log.action === 'DELETE' ? 'bg-red-900/30 text-red-500' :
+                                                log.action === 'CREATE' ? 'bg-green-900/30 text-green-500' :
+                                                    'bg-blue-900/30 text-blue-500'
+                                                }`}>
+                                                {log.action}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 font-mono text-[9px]">{log.record_id || '-'}</td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button className={`transition-colors underline decoration-dotted ${expandedId === log.id ? 'text-emerald-400' : 'text-gray-600 hover:text-white'}`}>
+                                                {expandedId === log.id ? 'FECHAR' : 'VER JSON'}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {expandedId === log.id && (
+                                        <tr key={`${log.id}-detail`}>
+                                            <td colSpan={6} className="px-6 py-4 bg-gray-950/50">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-2 font-black">Dados Anteriores</p>
+                                                        <pre className="text-[10px] text-gray-400 font-mono bg-black/30 p-3 rounded-lg overflow-x-auto max-h-60 overflow-y-auto">
+                                                            {log.previous_data ? JSON.stringify(log.previous_data, null, 2) : 'Nenhum'}
+                                                        </pre>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[9px] text-emerald-500 uppercase tracking-widest mb-2 font-black">Dados Novos</p>
+                                                        <pre className="text-[10px] text-gray-400 font-mono bg-black/30 p-3 rounded-lg overflow-x-auto max-h-60 overflow-y-auto">
+                                                            {log.new_data ? JSON.stringify(log.new_data, null, 2) : 'Nenhum'}
+                                                        </pre>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </>
                             ))}
                         </tbody>
                     </table>
