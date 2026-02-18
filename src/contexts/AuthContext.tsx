@@ -33,7 +33,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
 
-    const isPublicRoute = pathname?.startsWith('/verificar');
+    const PUBLIC_PREFIXES = ['/verificar', '/login'];
+    const isPublicRoute = PUBLIC_PREFIXES.some(prefix => pathname?.startsWith(prefix)) ||
+        (typeof window !== 'undefined' && PUBLIC_PREFIXES.some(prefix => window.location.pathname.startsWith(prefix)));
 
     const lastProfileUserId = React.useRef<string | null>(null);
     const fetchingForUserId = React.useRef<string | null>(null);
