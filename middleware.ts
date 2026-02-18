@@ -26,7 +26,10 @@ export async function middleware(request: NextRequest) {
                         },
                     })
                     cookiesToSet.forEach(({ name, value, options }) => {
-                        response.cookies.set(name, value, options)
+                        // Strip maxAge/expires to make session-only cookies
+                        // Browser will clear these when closed
+                        const { maxAge, expires, ...sessionOptions } = options || {}
+                        response.cookies.set(name, value, sessionOptions)
                     })
                 },
             },

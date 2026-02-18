@@ -45,7 +45,22 @@ export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey, {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: typeof window !== 'undefined' ? window.sessionStorage : undefined,
         flowType: 'pkce'
+    },
+    cookies: {
+        getAll() {
+            if (typeof document === 'undefined') return []
+            return document.cookie.split(';').map(c => {
+                const [name, ...rest] = c.trim().split('=')
+                return { name, value: rest.join('=') }
+            }).filter(c => c.name)
+        },
+        setAll(cookiesToSet) {
+            if (typeof document === 'undefined') return
+            cookiesToSet.forEach(({ name, value }) => {
+                // Session cookie: no max-age or expires, so it dies when browser closes
+                document.cookie = `${name}=${value}; path=/; SameSite=Lax; Secure`
+            })
+        }
     }
 })
