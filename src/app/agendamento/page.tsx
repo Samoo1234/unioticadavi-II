@@ -313,17 +313,22 @@ function AgendamentoContent() {
             if (!error && data) {
                 // Formatar para HH:MM
                 const occupied = data.map(a => a.hora.substring(0, 5));
+                console.log('[Agendamento] Horários ocupados encontrados:', occupied, 'para data:', formData.data, 'empresa:', formData.empresaId);
 
                 // Se estiver editando, permitir o próprio horário atual
                 if (editandoId) {
                     const atual = agenda.find(c => c.id === editandoId);
                     if (atual && atual.data === formData.data && atual.empresaId === formData.empresaId) {
-                        setHorariosOcupados(occupied.filter(h => h !== atual.hora));
+                        const filtered = occupied.filter(h => h !== atual.hora);
+                        console.log('[Agendamento] Editando - removendo horário atual:', atual.hora, 'ocupados finais:', filtered);
+                        setHorariosOcupados(filtered);
                         return;
                     }
                 }
 
                 setHorariosOcupados(occupied);
+            } else if (error) {
+                console.error('[Agendamento] Erro ao buscar horários ocupados:', error);
             }
         } catch (err) {
             console.error("Erro ao buscar horários ocupados:", err);
@@ -951,7 +956,7 @@ function AgendamentoContent() {
                                     {horariosDisponiveis.map((h) => {
                                         const ocupado = horariosOcupados.includes(h);
                                         return (
-                                            <option key={h} value={h} disabled={ocupado}>
+                                            <option key={h} value={h} disabled={ocupado} style={ocupado ? { color: '#9ca3af' } : {}}>
                                                 {h} {ocupado ? "(OCUPADO)" : ""}
                                             </option>
                                         );
