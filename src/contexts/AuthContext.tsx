@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { debugLog, debugError } from "@/utils/debugUtils";
 import { useRouter, usePathname } from 'next/navigation';
 
 export type Permission = {
@@ -35,13 +36,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const isPublicRoute = pathname?.startsWith('/verificar');
 
     const lastProfileUserId = React.useRef<string | null>(null);
+    const fetchingForUserId = React.useRef<string | null>(null);
 
     const fetchProfileData = async (userId: string) => {
-        // Avoid redundant fetches if profile for this user is already loaded
-        if (lastProfileUserId.current === userId && profile) {
+        // Avoid redundant fetches:
+        // 1. If profile for this user is already fully loaded (ref-based, not state-based)
+        if (lastProfileUserId.current === userId) {
+            console.log('[Auth] Perfil já carregado para este usuário, ignorando fetch duplicado');
             setLoading(false);
             return;
         }
+        // 2. If a fetch for this exact user is already in flight
+        if (fetchingForUserId.current === userId) {
+            console.log('[Auth] Fetch já em andamento para este usuário, ignorando');
+            return;
+        }
+        fetchingForUserId.current = userId;
 
         try {
             console.log(`[Auth] Buscando perfil para: ${userId}`);
@@ -63,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 .single();
 
             if (error) {
-                console.error('[Auth] Erro ao buscar perfil:', error.message);
+                debugError('AUTH_PROFILE', 'Erro ao carregar perfil, usando fallback local', error);
                 // Keep existing profile if it's a transient error, 
                 // but if we have NO profile, we must indicate loading is done
                 if (!profile) {
@@ -71,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     setPermissions([]);
                     setRoleName(null);
                 }
-                return;
+                throw error;
             }
 
             if (data) {
@@ -104,24 +114,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (err) {
             console.error('[Auth] Erro fatal no fetchProfileData:', err);
         } finally {
+            fetchingForUserId.current = null;
             setLoading(false);
         }
     };
 
-    // 1. Unified Auth State Management
+    // Unified Auth State Management
     useEffect(() => {
         let mounted = true;
 
         const handleSession = async (session: any, eventName = 'NONE') => {
             if (!mounted) return;
-            console.log(`[Auth] Evento: ${eventName} | Usuário: ${session?.user?.id || 'Nenhum'}`);
 
-            if (session?.user) {
+            const currentUserId = session?.user?.id || null;
+            console.log(`[Auth] Evento: ${eventName} | Usuário: ${currentUserId || 'Nenhum'}`);
+
+            if (currentUserId) {
                 setUser(session.user);
-                await fetchProfileData(session.user.id);
+                // fetchProfileData handles its own deduplication using lastProfileUserId
+                await fetchProfileData(currentUserId);
             } else {
                 console.log('[Auth] Sessão limpa');
                 lastProfileUserId.current = null;
+                fetchingForUserId.current = null;
                 setUser(null);
                 setProfile(null);
                 setPermissions([]);
@@ -131,13 +146,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         };
 
-        // Initialize session on mount
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            handleSession(session, 'INITIAL_SESSION');
-        });
-
-        // Listen for all auth changes
+        // Initialize and listen for all auth changes
+        // onAuthStateChange handles both initial session and subsequent events
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            debugLog('AUTH_STATE', `Estado mudou: ${event}`, { userId: session?.user?.id });
             await handleSession(session, event);
         });
 

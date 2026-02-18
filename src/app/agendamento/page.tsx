@@ -1068,9 +1068,9 @@ function AgendamentoContent() {
                 )}
 
                 {!mostrarForm && view === "agenda" && (
-                    <div className="flex flex-wrap gap-4 items-end bg-gray-900 border border-gray-800 p-4">
-                        <div className="w-64">
-                            <label className="text-xs text-gray-500 block mb-1">FILTRAR POR UNIDADE</label>
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-end bg-gray-900 border border-gray-800 p-3 sm:p-4">
+                        <div className="flex-1 min-w-0 sm:w-64">
+                            <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">UNIDADE</label>
                             <select
                                 value={filtroEmpresaId}
                                 disabled={!!profile?.unit_id}
@@ -1085,8 +1085,8 @@ function AgendamentoContent() {
                                 ))}
                             </select>
                         </div>
-                        <div className="w-56">
-                            <label className="text-xs text-gray-500 block mb-1">FILTRAR POR DATA</label>
+                        <div className="flex-1 min-w-0 sm:w-56">
+                            <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">DATA</label>
                             <select
                                 value={filtroData}
                                 onChange={(e) => setFiltroData(e.target.value)}
@@ -1105,106 +1105,123 @@ function AgendamentoContent() {
                                 if (!profile?.unit_id) setFiltroEmpresaId(0);
                                 setFiltroData(new Date().toISOString().split("T")[0]);
                             }}
-                            className="px-3 py-1.5 bg-gray-800 border border-gray-700 text-xs text-gray-400 hover:text-white"
+                            className="px-4 py-2 bg-gray-800 border border-gray-700 text-xs font-bold text-gray-400 hover:text-white transition-colors"
                         >
-                            LIMPAR FILTROS
+                            LIMPAR
                         </button>
                     </div>
                 )}
 
                 {/* Tabela de Agendamento */}
                 {view === "agenda" ? (
-                    <div className="bg-gray-900 border border-gray-800">
-                        <table className="w-full">
+                    <div className="bg-transparent lg:bg-gray-900 lg:border lg:border-gray-800">
+                        {/* Mobile View: Cards */}
+                        <div className="lg:hidden space-y-3">
+                            {carregando ? (
+                                <div className="p-8 text-center text-gray-500 text-sm">Carregando...</div>
+                            ) : agendaFiltrada.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500 text-sm bg-gray-900 border border-gray-800">Nenhum agendamento.</div>
+                            ) : (
+                                agendaFiltrada.map((consulta) => (
+                                    <div key={consulta.id} className={`bg-gray-900 border-l-4 p-4 shadow-sm border-gray-800 ${consulta.status === 'confirmado' ? 'border-l-green-600' :
+                                        consulta.status === 'aguardando' ? 'border-l-yellow-600' :
+                                            consulta.status === 'atrasado' ? 'border-l-red-600' : 'border-l-gray-600'
+                                        } ${consulta.status === 'cancelado' ? 'opacity-60' : ''}`}>
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="font-mono text-emerald-500 font-bold">{consulta.hora}</div>
+                                            <StatusBadge status={consulta.status} />
+                                        </div>
+                                        <div className="text-white font-bold mb-1 uppercase tracking-tight">{consulta.pacienteNome}</div>
+                                        <div className="text-xs text-gray-500 mb-4">{consulta.tipo}</div>
+
+                                        {consulta.status !== "cancelado" && (
+                                            <div className="flex flex-wrap gap-2">
+                                                {profile?.roles?.name === 'Administrador' && (
+                                                    <button
+                                                        onClick={() => handleAbrirFinanceiroIndividual(consulta)}
+                                                        className="flex-1 py-1.5 text-[10px] font-black bg-blue-600/10 border border-blue-600/30 text-blue-500 hover:bg-blue-600/20"
+                                                    >
+                                                        FINANCEIRO
+                                                    </button>
+                                                )}
+                                                {consulta.status !== "confirmado" && (
+                                                    <button
+                                                        onClick={() => handleConfirmar(consulta.id)}
+                                                        className="flex-1 py-1.5 text-[10px] font-black bg-green-600/10 border border-green-600/30 text-green-500 hover:bg-green-600/20"
+                                                    >
+                                                        OK
+                                                    </button>
+                                                )}
+                                                {consulta.status !== "confirmado" && (
+                                                    <button
+                                                        onClick={() => handleReagendar(consulta.id)}
+                                                        className="flex-1 py-1.5 text-[10px] font-black bg-yellow-600/10 border border-yellow-600/30 text-yellow-500 hover:bg-yellow-600/20"
+                                                    >
+                                                        REAGER.
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={() => handleCancelar(consulta.id)}
+                                                    className="flex-1 py-1.5 text-[10px] font-black bg-red-600/10 border border-red-600/30 text-red-500 hover:bg-red-600/20"
+                                                >
+                                                    CANCEL.
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Desktop View: Table */}
+                        <table className="w-full hidden lg:table">
                             <thead>
                                 <tr className="border-b border-gray-800 text-left">
-                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-20">
-                                        HORA
-                                    </th>
-                                    <th className="px-4 py-3 text-xs font-medium text-gray-500">
-                                        PACIENTE
-                                    </th>
-                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-28">
-                                        TIPO
-                                    </th>
-                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-32">
-                                        STATUS
-                                    </th>
-                                    <th className="px-4 py-3 text-xs font-medium text-gray-500 w-72">
-                                        AÇÕES
-                                    </th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 w-20 tracking-widest">HORA</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 tracking-widest">PACIENTE</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 w-28 tracking-widest">TIPO</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 w-32 tracking-widest">STATUS</th>
+                                    <th className="px-4 py-3 text-xs font-bold text-gray-500 w-72 tracking-widest text-center">AÇÕES</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {carregando ? (
                                     <tr>
-                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">
-                                            Carregando agendamentos...
-                                        </td>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">Carregando...</td>
                                     </tr>
                                 ) : agendaFiltrada.length === 0 ? (
                                     <tr>
-                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">
-                                            Nenhum agendamento encontrado para os filtros selecionados.
-                                        </td>
+                                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">Nenhum agendamento.</td>
                                     </tr>
                                 ) : (
                                     agendaFiltrada.map((consulta) => (
-                                        <tr
-                                            key={consulta.id}
-                                            className={`border-b border-gray-800/50 ${consulta.status === "cancelado" ? "opacity-50" : ""
-                                                }`}
-                                        >
-                                            <td className="px-4 py-3 text-sm font-mono text-white">
-                                                {consulta.hora}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-300">
-                                                {consulta.pacienteNome}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-gray-400">
-                                                {consulta.tipo}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <StatusBadge status={consulta.status} />
-                                            </td>
-                                            <td className="px-4 py-3">
+                                        <tr key={consulta.id} className={`border-b border-gray-800/50 hover:bg-white/[0.02] transition-colors ${consulta.status === "cancelado" ? "opacity-40" : ""}`}>
+                                            <td className="px-4 py-4 text-sm font-mono text-emerald-500 font-bold">{consulta.hora}</td>
+                                            <td className="px-4 py-4 text-sm text-gray-200 font-medium uppercase tracking-tight">{consulta.pacienteNome}</td>
+                                            <td className="px-4 py-4 text-xs text-gray-500 font-bold">{consulta.tipo}</td>
+                                            <td className="px-4 py-4"><StatusBadge status={consulta.status} /></td>
+                                            <td className="px-4 py-4">
                                                 {consulta.status !== "cancelado" && (
-                                                    <div className="flex gap-1">
+                                                    <div className="flex justify-center gap-1.5">
                                                         {profile?.roles?.name === 'Administrador' && (
-                                                            <button
-                                                                onClick={() => handleAbrirFinanceiroIndividual(consulta)}
-                                                                className="px-2 py-1 text-xs font-medium text-blue-500 border border-blue-500/50 hover:bg-blue-500/10"
-                                                                title="Abrir financeiro deste paciente"
-                                                            >
-                                                                FINANCEIRO
+                                                            <button onClick={() => handleAbrirFinanceiroIndividual(consulta)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Financeiro">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                             </button>
                                                         )}
                                                         {consulta.status !== "confirmado" && (
-                                                            <button
-                                                                onClick={() => handleConfirmar(consulta.id)}
-                                                                className="px-2 py-1 text-xs font-medium text-green-500 border border-green-500/50 hover:bg-green-500/10"
-                                                            >
-                                                                CONFIRMAR
+                                                            <button onClick={() => handleConfirmar(consulta.id)} className="p-2 text-green-500 hover:bg-green-500/10 rounded-lg transition-colors" title="Confirmar">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                                                             </button>
                                                         )}
                                                         {consulta.status !== "confirmado" && (
-                                                            <button
-                                                                onClick={() => handleReagendar(consulta.id)}
-                                                                className="px-2 py-1 text-xs font-medium text-yellow-500 border border-yellow-500/50 hover:bg-yellow-500/10"
-                                                            >
-                                                                REAGENDAR
+                                                            <button onClick={() => handleReagendar(consulta.id)} className="p-2 text-yellow-500 hover:bg-yellow-500/10 rounded-lg transition-colors" title="Reagendar">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                             </button>
                                                         )}
-                                                        <button
-                                                            onClick={() => handleCancelar(consulta.id)}
-                                                            className="px-2 py-1 text-xs font-medium text-red-500 border border-red-500/50 hover:bg-red-500/10"
-                                                        >
-                                                            CANCELAR
+                                                        <button onClick={() => handleCancelar(consulta.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Cancelar">
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                         </button>
                                                     </div>
-                                                )}
-                                                {consulta.status === "cancelado" && (
-                                                    <span className="text-xs text-gray-500">-</span>
                                                 )}
                                             </td>
                                         </tr>

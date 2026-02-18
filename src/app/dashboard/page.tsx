@@ -128,33 +128,33 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Status Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gray-900 border border-gray-800 p-4">
-                        <div className="flex items-center gap-2 mb-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 lg:gap-4">
+                    <div className="bg-gray-900 border border-gray-800 p-3 lg:p-4">
+                        <div className="flex items-center gap-2 mb-1 lg:mb-2">
                             <span className="w-2 h-2 bg-green-500"></span>
-                            <span className="text-xs text-gray-400 font-medium">CONFIRMADAS</span>
+                            <span className="text-[10px] lg:text-xs text-gray-400 font-black tracking-widest">CONFIRMADAS</span>
                         </div>
-                        <div className="text-4xl font-bold text-green-500">
+                        <div className="text-3xl lg:text-4xl font-bold text-green-500">
                             {stats.confirmadas}
                         </div>
                     </div>
 
-                    <div className="bg-gray-900 border border-gray-800 p-4">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-gray-900 border border-gray-800 p-3 lg:p-4">
+                        <div className="flex items-center gap-2 mb-1 lg:mb-2">
                             <span className="w-2 h-2 bg-yellow-500"></span>
-                            <span className="text-xs text-gray-400 font-medium">AGUARDANDO</span>
+                            <span className="text-[10px] lg:text-xs text-gray-400 font-black tracking-widest">AGUARDANDO</span>
                         </div>
-                        <div className="text-4xl font-bold text-yellow-500">
+                        <div className="text-3xl lg:text-4xl font-bold text-yellow-500">
                             {stats.aguardando}
                         </div>
                     </div>
 
-                    <div className="bg-gray-900 border border-gray-800 p-4">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-gray-900 border border-gray-800 p-3 lg:p-4 col-span-2 md:col-span-1">
+                        <div className="flex items-center gap-2 mb-1 lg:mb-2">
                             <span className="w-2 h-2 bg-red-500"></span>
-                            <span className="text-xs text-gray-400 font-medium">ATRASADAS</span>
+                            <span className="text-[10px] lg:text-xs text-gray-400 font-black tracking-widest">ATRASADAS</span>
                         </div>
-                        <div className="text-4xl font-bold text-red-500">
+                        <div className="text-3xl lg:text-4xl font-bold text-red-500">
                             {stats.atrasadas}
                         </div>
                     </div>
