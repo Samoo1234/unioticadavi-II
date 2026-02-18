@@ -32,10 +32,13 @@ export default function AuditAdminPage() {
         setLoading(true);
         const { data, error } = await supabase
             .from('audit_logs')
-            .select('*, profiles:user_id(full_name)')
+            .select('*, profiles!audit_logs_user_id_profiles_fkey(full_name)')
             .order('created_at', { ascending: false })
             .limit(100);
 
+        if (error) {
+            console.error('[Auditoria] Erro ao buscar logs:', error);
+        }
         if (data) setLogs(data as any);
         setLoading(false);
     };
@@ -90,8 +93,8 @@ export default function AuditAdminPage() {
                                     <td className="px-6 py-4 text-emerald-500">{log.module}</td>
                                     <td className="px-6 py-4">
                                         <span className={`px-2 py-0.5 rounded ${log.action === 'DELETE' ? 'bg-red-900/30 text-red-500' :
-                                                log.action === 'CREATE' ? 'bg-green-900/30 text-green-500' :
-                                                    'bg-blue-900/30 text-blue-500'
+                                            log.action === 'CREATE' ? 'bg-green-900/30 text-green-500' :
+                                                'bg-blue-900/30 text-blue-500'
                                             }`}>
                                             {log.action}
                                         </span>
