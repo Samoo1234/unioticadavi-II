@@ -805,7 +805,7 @@ export default function VendasPage() {
                                     className={`bg-transparent border-none text-sm font-bold text-white p-0 focus:outline-none transition-all ${profile?.unit_id ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:text-green-500'}`}
                                 >
                                     {empresas.map(emp => (
-                                        <option key={emp.id} value={emp.id} className="bg-gray-900 text-white">{emp.nome_fantasia}</option>
+                                        <option key={emp.id} value={emp.id} className="bg-gray-900 text-white">{emp.nome_fantasia}{emp.cidade ? ` - ${emp.cidade}` : ''}</option>
                                     ))}
                                 </select>
                             </div>
