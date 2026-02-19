@@ -12,7 +12,7 @@ interface CashSummaryProps {
     totalFaturamento?: number;
     totalRecebido?: number;
     totaisPorEmpresa?: Record<number, { faturamento: number, recebido: number, saídas: number }>;
-    listaEmpresas?: { id: number, nome_fantasia: string }[];
+    listaEmpresas?: { id: number, nome_fantasia: string, cidade?: string }[];
     onImprimirRelatorio?: (tipo: "consolidado" | "parcial") => void;
     onImprimirRelatorioUnidade?: (empresaId: number) => void;
 }
@@ -143,7 +143,7 @@ export default function CashSummary({
                                         <div key={eid} className="bg-gray-800/30 p-2 border-l-2 border-green-600 relative group">
                                             <div className="flex items-center justify-between">
                                                 <div className="text-[10px] font-bold text-white uppercase truncate">
-                                                    {empresa?.nome_fantasia || `Unidade ${eid}`}
+                                                    {empresa ? `${empresa.nome_fantasia}${empresa.cidade ? ` - ${empresa.cidade}` : ''}` : `Unidade ${eid}`}
                                                 </div>
                                                 <button
                                                     onClick={() => onImprimirRelatorioUnidade?.(parseInt(eid))}

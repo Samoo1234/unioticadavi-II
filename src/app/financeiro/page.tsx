@@ -56,7 +56,7 @@ export default function FinanceiroPage() {
     }, [unidadeSelecionada, dataSelecionada]);
 
     const fetchEmpresas = async () => {
-        const { data } = await supabase.from('empresas').select('id, nome_fantasia').eq('ativo', true);
+        const { data } = await supabase.from('empresas').select('id, nome_fantasia, cidade').eq('ativo', true);
         if (data) setListaEmpresas(data);
     };
 
@@ -405,8 +405,9 @@ export default function FinanceiroPage() {
 
             // Gerar relatório profissional no estilo TSO
             setTimeout(() => {
+                const emp = listaEmpresas.find(e => e.id === parseInt(unidadeSelecionada));
                 const unidadeTexto = unidadeSelecionada === 'geral' ? "TODAS AS LOJAS" :
-                    listaEmpresas.find(e => e.id === parseInt(unidadeSelecionada))?.nome_fantasia || "UNIDADE";
+                    emp ? `${emp.nome_fantasia}${emp.cidade ? ` - ${emp.cidade}` : ''}` : "UNIDADE";
 
                 imprimirRelatorioFinanceiro({
                     titulo: "RELATÓRIO DE FECHAMENTO DE CAIXA",
@@ -436,8 +437,9 @@ export default function FinanceiroPage() {
     };
 
     const handleImprimirRelatorio = (tipo: "consolidado" | "parcial") => {
+        const empSel = listaEmpresas.find(e => e.id === parseInt(unidadeSelecionada));
         const unidadeTexto = unidadeSelecionada === 'geral' ? "TODAS AS LOJAS" :
-            listaEmpresas.find(e => e.id === parseInt(unidadeSelecionada))?.nome_fantasia || "UNIDADE";
+            empSel ? `${empSel.nome_fantasia}${empSel.cidade ? ` - ${empSel.cidade}` : ''}` : "UNIDADE";
 
         imprimirRelatorioFinanceiro({
             titulo: tipo === "consolidado" ? "RELATÓRIO CONSOLIDADO DO GRUPO" : "RELATÓRIO FINANCEIRO PARCIAL",
@@ -475,11 +477,11 @@ export default function FinanceiroPage() {
         const tSaidas = saidasUnidade.reduce((acc, s) => acc + s.valor, 0);
 
         imprimirRelatorioFinanceiro({
-            titulo: `RELATÓRIO FINANCEIRO - ${empresa.nome_fantasia.toUpperCase()}`,
+            titulo: `RELATÓRIO FINANCEIRO - ${empresa.nome_fantasia.toUpperCase()}${empresa.cidade ? ` - ${empresa.cidade.toUpperCase()}` : ''}`,
             subtitulo: "MOVIMENTAÇÃO DIÁRIA DA UNIDADE",
             data: dataSelecionada,
             hora: getHoraAtual(),
-            unidade: empresa.nome_fantasia.toUpperCase(),
+            unidade: `${empresa.nome_fantasia}${empresa.cidade ? ` - ${empresa.cidade}` : ''}`.toUpperCase(),
             operador: "ADMIN",
             resumo: {
                 saldoInicial: 0, // In general view we don't track base for each unless we fetch.
@@ -521,7 +523,7 @@ export default function FinanceiroPage() {
                                     >
                                         {!profile?.unit_id && <option value="geral" className="bg-gray-900 text-white">TODAS AS LOJAS</option>}
                                         {listaEmpresas.map(emp => (
-                                            <option key={emp.id} value={emp.id} className="bg-gray-900 text-white">{emp.nome_fantasia.toUpperCase()}</option>
+                                            <option key={emp.id} value={emp.id} className="bg-gray-900 text-white">{emp.nome_fantasia.toUpperCase()}{emp.cidade ? ` - ${emp.cidade.toUpperCase()}` : ''}</option>
                                         ))}
                                     </select>
                                 </div>
