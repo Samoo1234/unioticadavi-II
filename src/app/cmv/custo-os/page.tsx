@@ -75,7 +75,7 @@ export default function CustoOSPage() {
         setLoading(true);
         const [regRes, empRes, medRes] = await Promise.all([
             supabase.from("custos_os").select("*, empresas(id, nome_fantasia, cidade)").order("data", { ascending: false }),
-            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
             supabase.from("medicos").select("id, nome").eq("ativo", true).order("nome"),
         ]);
 

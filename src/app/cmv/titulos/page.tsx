@@ -72,7 +72,7 @@ export default function TitulosPage() {
         setLoading(true);
         const [titRes, empRes, fornRes, tiposRes] = await Promise.all([
             supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia, cidade), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false }),
-            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
             supabase.from("fornecedores").select("id, nome").eq("ativo", true).order("nome"),
             supabase.from("tipos_fornecedores").select("*").order("nome"),
         ]);

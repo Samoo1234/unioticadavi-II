@@ -53,7 +53,7 @@ export default function ExtratoDespesasPage() {
 
     const fetchRefs = async () => {
         const [empRes, catRes] = await Promise.all([
-            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
             supabase.from("categorias").select("*").order("nome"),
         ]);
         if (empRes.data) setEmpresas(empRes.data);

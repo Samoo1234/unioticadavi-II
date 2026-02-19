@@ -65,7 +65,7 @@ export default function ExtratoTitulosPage() {
 
     const fetchRefs = async () => {
         const [empRes, fornRes, tiposRes] = await Promise.all([
-            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
             supabase.from("fornecedores").select("id, nome").eq("ativo", true).order("nome"),
             supabase.from("tipos_fornecedores").select("*").order("nome"),
         ]);

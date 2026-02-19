@@ -56,7 +56,7 @@ export default function FinanceiroPage() {
     }, [unidadeSelecionada, dataSelecionada]);
 
     const fetchEmpresas = async () => {
-        const { data } = await supabase.from('empresas').select('id, nome_fantasia, cidade').eq('ativo', true);
+        const { data } = await supabase.from('empresas').select('id, nome_fantasia, cidade').eq('ativo', true).order('cidade');
         if (data) setListaEmpresas(data);
     };
 

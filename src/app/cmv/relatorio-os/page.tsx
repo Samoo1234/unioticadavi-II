@@ -44,7 +44,7 @@ export default function RelatorioOSPage() {
     }, [filtros]);
 
     const fetchEmpresas = async () => {
-        const { data } = await supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia");
+        const { data } = await supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade");
         if (data) setEmpresas(data);
     };
 

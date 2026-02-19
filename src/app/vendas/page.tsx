@@ -277,7 +277,7 @@ export default function VendasPage() {
                 .from('empresas')
                 .select('*')
                 .eq('ativo', true)
-                .order('nome_fantasia');
+                .order('cidade');
 
             if (!error && data && data.length > 0) {
                 setEmpresas(data);
