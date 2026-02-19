@@ -475,6 +475,7 @@ export default function EmpresasPage() {
                             nomeEmpresa={empresaSelecionada.nomeFantasia}
                             isMatriz={empresaSelecionada.tipo === "Matriz"}
                             medicosDisponiveis={matriz?.configuracaoHorarios?.medicos || []}
+                            empresaId={empresaSelecionada.id}
                         />
                     ) : (
                         <>

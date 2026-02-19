@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 interface Empresa {
     id: number;
     nome_fantasia: string;
+    cidade?: string;
 }
 
 interface Fornecedor {
@@ -64,7 +65,7 @@ export default function ExtratoTitulosPage() {
 
     const fetchRefs = async () => {
         const [empRes, fornRes, tiposRes] = await Promise.all([
-            supabase.from("empresas").select("id, nome_fantasia").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
             supabase.from("fornecedores").select("id, nome").eq("ativo", true).order("nome"),
             supabase.from("tipos_fornecedores").select("*").order("nome"),
         ]);
@@ -77,7 +78,7 @@ export default function ExtratoTitulosPage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            let query = supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false });
+            let query = supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia, cidade), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false });
 
             if (filtros.status !== "todos") query = query.eq("status", filtros.status);
             if (filtros.empresa_id) query = query.eq("empresa_id", parseInt(filtros.empresa_id));
@@ -101,7 +102,7 @@ export default function ExtratoTitulosPage() {
 
     // Agrupamentos
     const titulosPorEmpresa = empresas.map(emp => ({
-        empresa: emp.nome_fantasia,
+        empresa: `${emp.nome_fantasia}${emp.cidade ? ` - ${emp.cidade}` : ''}`,
         pendente: titulos.filter(t => t.empresa_id === emp.id && t.status === "pendente").reduce((acc, t) => acc + t.valor, 0),
         pago: titulos.filter(t => t.empresa_id === emp.id && t.status === "pago").reduce((acc, t) => acc + t.valor, 0),
     })).filter(e => e.pendente > 0 || e.pago > 0);
@@ -129,7 +130,7 @@ export default function ExtratoTitulosPage() {
     const totalGeralQtd = totalPendenteQtd + totalPagoQtd;
 
     const empresaFiltrada = filtros.empresa_id
-        ? empresas.find(e => e.id === parseInt(filtros.empresa_id))?.nome_fantasia || ""
+        ? (() => { const emp = empresas.find(e => e.id === parseInt(filtros.empresa_id)); return emp ? `${emp.nome_fantasia}${emp.cidade ? ` - ${emp.cidade}` : ''}` : ''; })()
         : "Todas as Filiais";
 
     const handlePagar = async (id: number) => {
@@ -160,7 +161,7 @@ export default function ExtratoTitulosPage() {
                         </select>
                         <select value={filtros.empresa_id} onChange={(e) => setFiltros({ ...filtros, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                             <option value="">Todas Empresas</option>
-                            {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                            {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                         </select>
                         <select value={filtros.fornecedor_id} onChange={(e) => setFiltros({ ...filtros, fornecedor_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                             <option value="">Todos Fornecedores</option>
@@ -285,7 +286,7 @@ export default function ExtratoTitulosPage() {
                                     <tr key={t.id} className="border-t border-gray-800 hover:bg-gray-800/50">
                                         <td className="px-4 py-3 text-gray-400 text-sm">{t.numero}</td>
                                         <td className="px-4 py-3 text-white text-sm">{t.fornecedores?.nome || "-"}</td>
-                                        <td className="px-4 py-3 text-gray-400 text-sm">{t.empresas?.nome_fantasia || "-"}</td>
+                                        <td className="px-4 py-3 text-gray-400 text-sm">{t.empresas ? `${t.empresas.nome_fantasia}${t.empresas.cidade ? ` - ${t.empresas.cidade}` : ''}` : "-"}</td>
                                         <td className="px-4 py-3 text-gray-400 text-sm">{t.tipos_fornecedores?.nome || "-"}</td>
                                         <td className="px-4 py-3 text-right text-white text-sm font-mono">{formatarValor(t.valor)}</td>
                                         <td className="px-4 py-3 text-gray-400 text-sm">{formatarData(t.data_vencimento)}</td>

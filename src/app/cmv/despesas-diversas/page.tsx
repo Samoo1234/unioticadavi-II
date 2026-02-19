@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 interface Empresa {
     id: number;
     nome_fantasia: string;
+    cidade?: string;
 }
 
 interface Categoria {
@@ -67,7 +68,7 @@ export default function DespesasDiversasPage() {
 
     const fetchRefs = async () => {
         const [empRes, catRes] = await Promise.all([
-            supabase.from("empresas").select("id, nome_fantasia").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
             supabase.from("categorias").select("*").eq("tipo", "diversa").order("nome"),
         ]);
         if (empRes.data) setEmpresas(empRes.data);
@@ -76,7 +77,7 @@ export default function DespesasDiversasPage() {
 
     const fetchData = async () => {
         setLoading(true);
-        let query = supabase.from("despesas_diversas").select("*, empresas(id, nome_fantasia), categorias(id, nome)").order("data", { ascending: false });
+        let query = supabase.from("despesas_diversas").select("*, empresas(id, nome_fantasia, cidade), categorias(id, nome)").order("data", { ascending: false });
 
         if (filtros.empresa_id) query = query.eq("empresa_id", parseInt(filtros.empresa_id));
         if (filtros.categoria_id) query = query.eq("categoria_id", parseInt(filtros.categoria_id));
@@ -176,7 +177,7 @@ export default function DespesasDiversasPage() {
                         <div className="flex gap-4">
                             <select value={filtros.empresa_id} onChange={(e) => setFiltros({ ...filtros, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Todas Empresas</option>
-                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                             </select>
                             <select value={filtros.categoria_id} onChange={(e) => setFiltros({ ...filtros, categoria_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Todas Categorias</option>
@@ -211,7 +212,7 @@ export default function DespesasDiversasPage() {
                             <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]" />
                             <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Empresa...</option>
-                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                             </select>
                             <select value={form.categoria_id} onChange={(e) => setForm({ ...form, categoria_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Categoria...</option>
@@ -257,7 +258,7 @@ export default function DespesasDiversasPage() {
                                         <td className="px-4 py-3 text-gray-400 text-sm">{formatarData(d.data)}</td>
                                         <td className="px-4 py-3 text-white text-sm">{d.nome}</td>
                                         <td className="px-4 py-3 text-gray-400 text-sm">{d.categorias?.nome || "-"}</td>
-                                        <td className="px-4 py-3 text-gray-400 text-sm">{d.empresas?.nome_fantasia || "-"}</td>
+                                        <td className="px-4 py-3 text-gray-400 text-sm">{d.empresas ? `${d.empresas.nome_fantasia}${d.empresas.cidade ? ` - ${d.empresas.cidade}` : ''}` : "-"}</td>
                                         <td className="px-4 py-3 text-right text-yellow-400 text-sm font-mono">{formatarValor(d.valor)}</td>
                                         <td className="px-4 py-3 text-center text-gray-400 text-sm">{d.forma_pagamento?.toUpperCase() || "-"}</td>
                                         <td className="px-4 py-3 text-right">

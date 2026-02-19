@@ -22,6 +22,7 @@ interface ConfiguracaoHorariosProps {
     nomeEmpresa: string;
     isMatriz?: boolean;
     medicosDisponiveis?: Medico[];
+    empresaId?: number;
 }
 
 const INTERVALOS = [
@@ -56,6 +57,7 @@ export default function ConfiguracaoHorariosComponent({
     nomeEmpresa,
     isMatriz = false,
     medicosDisponiveis = [],
+    empresaId,
 }: ConfiguracaoHorariosProps) {
     // Médicos do banco de dados
     const [medicosDb, setMedicosDb] = useState<MedicoDb[]>([]);
@@ -67,15 +69,16 @@ export default function ConfiguracaoHorariosComponent({
     });
 
     // Buscar médicos do banco de dados
+    const fetchMedicos = async () => {
+        const { data } = await supabase
+            .from("medicos")
+            .select("id, nome")
+            .eq("ativo", true)
+            .order("nome");
+        if (data) setMedicosDb(data);
+    };
+
     useEffect(() => {
-        const fetchMedicos = async () => {
-            const { data } = await supabase
-                .from("medicos")
-                .select("id, nome")
-                .eq("ativo", true)
-                .order("nome");
-            if (data) setMedicosDb(data);
-        };
         fetchMedicos();
     }, []);
 
@@ -83,6 +86,7 @@ export default function ConfiguracaoHorariosComponent({
     const [novaData, setNovaData] = useState("");
     const [novoMedicoId, setNovoMedicoId] = useState<number | null>(null);
     const [novoMedicoNome, setNovoMedicoNome] = useState("");
+    const [salvandoMedico, setSalvandoMedico] = useState(false);
 
     const horariosDisp = useMemo(() => gerarHorarios(), []);
 
@@ -125,22 +129,57 @@ export default function ConfiguracaoHorariosComponent({
         setConfig({ ...config, intervaloMinutos: valor });
     };
 
-    // Handlers para médicos (apenas matriz)
-    const handleAdicionarMedico = () => {
-        if (!novoMedicoNome.trim()) return;
-        const novoId = Math.max(...config.medicos.map((m) => m.id), 0) + 1;
-        setConfig({
-            ...config,
-            medicos: [...config.medicos, { id: novoId, nome: novoMedicoNome.trim() }],
-        });
-        setNovoMedicoNome("");
+    // Handlers para médicos (apenas matriz) - persiste no banco de dados
+    const handleAdicionarMedico = async () => {
+        if (!novoMedicoNome.trim() || salvandoMedico) return;
+        setSalvandoMedico(true);
+        try {
+            const { data, error } = await supabase
+                .from("medicos")
+                .insert({
+                    nome: novoMedicoNome.trim(),
+                    empresa_id: empresaId || null,
+                    ativo: true,
+                })
+                .select("id, nome")
+                .single();
+
+            if (error) {
+                console.error("Erro ao cadastrar médico:", error);
+                alert("Erro ao cadastrar médico: " + error.message);
+                return;
+            }
+
+            if (data) {
+                setConfig({
+                    ...config,
+                    medicos: [...config.medicos, { id: data.id, nome: data.nome }],
+                });
+                setNovoMedicoNome("");
+                await fetchMedicos();
+            }
+        } finally {
+            setSalvandoMedico(false);
+        }
     };
 
-    const handleRemoverMedico = (id: number) => {
+    const handleRemoverMedico = async (id: number) => {
+        const { error } = await supabase
+            .from("medicos")
+            .update({ ativo: false })
+            .eq("id", id);
+
+        if (error) {
+            console.error("Erro ao remover médico:", error);
+            alert("Erro ao remover médico: " + error.message);
+            return;
+        }
+
         setConfig({
             ...config,
             medicos: config.medicos.filter((m) => m.id !== id),
         });
+        await fetchMedicos();
     };
 
     // Handler para adicionar dia disponível
@@ -327,10 +366,10 @@ export default function ConfiguracaoHorariosComponent({
                                 />
                                 <button
                                     onClick={handleAdicionarMedico}
-                                    disabled={!novoMedicoNome.trim()}
+                                    disabled={!novoMedicoNome.trim() || salvandoMedico}
                                     className="px-3 py-1.5 bg-green-700 border border-green-600 text-xs font-medium text-white hover:bg-green-600 disabled:opacity-50"
                                 >
-                                    + ADD
+                                    {salvandoMedico ? "..." : "+ ADD"}
                                 </button>
                             </div>
                         </div>

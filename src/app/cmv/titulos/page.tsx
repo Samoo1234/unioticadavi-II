@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 interface Empresa {
     id: number;
     nome_fantasia: string;
+    cidade?: string;
 }
 
 interface Fornecedor {
@@ -70,8 +71,8 @@ export default function TitulosPage() {
     const fetchData = async () => {
         setLoading(true);
         const [titRes, empRes, fornRes, tiposRes] = await Promise.all([
-            supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false }),
-            supabase.from("empresas").select("id, nome_fantasia").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia, cidade), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false }),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
             supabase.from("fornecedores").select("id, nome").eq("ativo", true).order("nome"),
             supabase.from("tipos_fornecedores").select("*").order("nome"),
         ]);
@@ -206,7 +207,7 @@ export default function TitulosPage() {
                                 className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm"
                             >
                                 <option value="">Todas Empresas</option>
-                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                             </select>
                             <button
                                 onClick={() => { resetForm(); setShowForm(true); }}
@@ -240,7 +241,7 @@ export default function TitulosPage() {
                             </select>
                             <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Empresa...</option>
-                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                             </select>
                             <select value={form.tipo_id} onChange={(e) => setForm({ ...form, tipo_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Tipo Fornecedor...</option>
@@ -284,7 +285,7 @@ export default function TitulosPage() {
                                     <tr key={t.id} className="border-t border-gray-800 hover:bg-gray-800/50">
                                         <td className="px-4 py-3 text-gray-400 text-sm">{t.numero}</td>
                                         <td className="px-4 py-3 text-white text-sm">{t.fornecedores?.nome || "-"}</td>
-                                        <td className="px-4 py-3 text-gray-400 text-sm">{t.empresas?.nome_fantasia || "-"}</td>
+                                        <td className="px-4 py-3 text-gray-400 text-sm">{t.empresas ? `${t.empresas.nome_fantasia}${t.empresas.cidade ? ` - ${t.empresas.cidade}` : ''}` : "-"}</td>
                                         <td className="px-4 py-3">
                                             <span className={`text-xs px-2 py-1 ${t.tipo === "pagar" ? "bg-red-900/50 text-red-400" : "bg-blue-900/50 text-blue-400"}`}>
                                                 {t.tipo === "pagar" ? "PAGAR" : "RECEBER"}

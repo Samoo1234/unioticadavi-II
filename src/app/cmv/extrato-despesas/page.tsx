@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 interface Empresa {
     id: number;
     nome_fantasia: string;
+    cidade?: string;
 }
 
 interface Categoria {
@@ -52,7 +53,7 @@ export default function ExtratoDespesasPage() {
 
     const fetchRefs = async () => {
         const [empRes, catRes] = await Promise.all([
-            supabase.from("empresas").select("id, nome_fantasia").eq("ativo", true).order("nome_fantasia"),
+            supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia"),
             supabase.from("categorias").select("*").order("nome"),
         ]);
         if (empRes.data) setEmpresas(empRes.data);
@@ -63,12 +64,12 @@ export default function ExtratoDespesasPage() {
         setLoading(true);
 
         // Buscar despesas fixas
-        let queryFixas = supabase.from("despesas_fixas").select("*, empresas(id, nome_fantasia), categorias(id, nome)");
+        let queryFixas = supabase.from("despesas_fixas").select("*, empresas(id, nome_fantasia, cidade), categorias(id, nome)");
         if (filtros.empresa_id) queryFixas = queryFixas.eq("empresa_id", parseInt(filtros.empresa_id));
         if (filtros.categoria_id) queryFixas = queryFixas.eq("categoria_id", parseInt(filtros.categoria_id));
 
         // Buscar despesas diversas
-        let queryDiversas = supabase.from("despesas_diversas").select("*, empresas(id, nome_fantasia), categorias(id, nome)");
+        let queryDiversas = supabase.from("despesas_diversas").select("*, empresas(id, nome_fantasia, cidade), categorias(id, nome)");
         if (filtros.empresa_id) queryDiversas = queryDiversas.eq("empresa_id", parseInt(filtros.empresa_id));
         if (filtros.categoria_id) queryDiversas = queryDiversas.eq("categoria_id", parseInt(filtros.categoria_id));
         if (filtros.dataInicio) queryDiversas = queryDiversas.gte("data", filtros.dataInicio);
@@ -86,7 +87,7 @@ export default function ExtratoDespesasPage() {
                     tipo: "fixa",
                     nome: d.credor || "Despesa Fixa",
                     categoria: d.categorias?.nome || "-",
-                    empresa: d.empresas?.nome_fantasia || "-",
+                    empresa: d.empresas ? `${d.empresas.nome_fantasia}${d.empresas.cidade ? ` - ${d.empresas.cidade}` : ''}` : "-",
                     empresa_id: d.empresa_id,
                     categoria_id: d.categoria_id,
                     valor: d.valor,
@@ -104,7 +105,7 @@ export default function ExtratoDespesasPage() {
                     tipo: "diversa",
                     nome: d.nome || "Despesa Diversa",
                     categoria: d.categorias?.nome || "-",
-                    empresa: d.empresas?.nome_fantasia || "-",
+                    empresa: d.empresas ? `${d.empresas.nome_fantasia}${d.empresas.cidade ? ` - ${d.empresas.cidade}` : ''}` : "-",
                     empresa_id: d.empresa_id,
                     categoria_id: d.categoria_id,
                     valor: d.valor,
@@ -143,10 +144,13 @@ export default function ExtratoDespesasPage() {
     })).filter(c => c.total > 0).sort((a, b) => b.total - a.total);
 
     // Agrupamento por empresa
-    const porEmpresa = empresas.map(emp => ({
-        nome: emp.nome_fantasia,
-        total: despesas.filter(d => d.empresa === emp.nome_fantasia).reduce((acc, d) => acc + d.valor, 0),
-    })).filter(e => e.total > 0).sort((a, b) => b.total - a.total);
+    const porEmpresa = empresas.map(emp => {
+        const label = `${emp.nome_fantasia}${emp.cidade ? ` - ${emp.cidade}` : ''}`;
+        return {
+            nome: label,
+            total: despesas.filter(d => d.empresa === label).reduce((acc, d) => acc + d.valor, 0),
+        };
+    }).filter(e => e.total > 0).sort((a, b) => b.total - a.total);
 
     return (
         <MainLayout>
@@ -174,7 +178,7 @@ export default function ExtratoDespesasPage() {
                         </select>
                         <select value={filtros.empresa_id} onChange={(e) => setFiltros({ ...filtros, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                             <option value="">Todas Empresas</option>
-                            {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                            {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                         </select>
                         <select value={filtros.categoria_id} onChange={(e) => setFiltros({ ...filtros, categoria_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                             <option value="">Todas Categorias</option>

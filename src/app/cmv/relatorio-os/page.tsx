@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 interface Empresa {
     id: number;
     nome_fantasia: string;
+    cidade?: string;
 }
 
 interface CustoOS {
@@ -43,13 +44,13 @@ export default function RelatorioOSPage() {
     }, [filtros]);
 
     const fetchEmpresas = async () => {
-        const { data } = await supabase.from("empresas").select("id, nome_fantasia").eq("ativo", true).order("nome_fantasia");
+        const { data } = await supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("nome_fantasia");
         if (data) setEmpresas(data);
     };
 
     const fetchData = async () => {
         setLoading(true);
-        let query = supabase.from("custos_os").select("*, empresas(id, nome_fantasia)").order("data", { ascending: false });
+        let query = supabase.from("custos_os").select("*, empresas(id, nome_fantasia, cidade)").order("data", { ascending: false });
 
         if (filtros.empresa_id) query = query.eq("empresa_id", parseInt(filtros.empresa_id));
         if (filtros.dataInicio) query = query.gte("data", filtros.dataInicio);
@@ -99,7 +100,7 @@ export default function RelatorioOSPage() {
                                 className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm"
                             >
                                 <option value="">Todas Empresas</option>
-                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}</option>)}
+                                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                             </select>
                             <input
                                 type="date"
@@ -190,7 +191,7 @@ export default function RelatorioOSPage() {
                                 {registros.map((r) => (
                                     <tr key={r.id} className="border-t border-gray-800 hover:bg-gray-800/50">
                                         <td className="px-4 py-3 text-gray-400 text-sm">{formatarData(r.data)}</td>
-                                        <td className="px-4 py-3 text-white text-sm">{r.empresas?.nome_fantasia || "-"}</td>
+                                        <td className="px-4 py-3 text-white text-sm">{r.empresas ? `${r.empresas.nome_fantasia}${r.empresas.cidade ? ` - ${r.empresas.cidade}` : ''}` : "-"}</td>
                                         <td className="px-4 py-3 text-gray-400 text-sm">{r.numero_tco || "-"}</td>
                                         <td className="px-4 py-3 text-gray-400 text-sm">{r.medico_nome || "-"}</td>
                                         <td className="px-4 py-3 text-right text-blue-400 text-sm font-mono">{formatarValor(r.valor_venda)}</td>
