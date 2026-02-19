@@ -94,8 +94,8 @@ function gerarHorariosDisponiveis(config: ConfiguracaoHorarios | undefined): str
 // Gerar datas disponíveis baseadas na configuração da empresa
 function gerarDatasDisponiveis(config: ConfiguracaoHorarios | undefined): { value: string; label: string; medico?: string; medico_id?: number }[] {
     if (!config || config.diasDisponiveis.length === 0) {
-        // Se não houver configuração, mostrar próximos 30 dias
-        return gerarDatas();
+        // Se não houver configuração, retornar vazio — datas devem ser inseridas na página Empresas
+        return [];
     }
 
     const hoje = new Date().toISOString().split("T")[0];
@@ -411,10 +411,18 @@ function AgendamentoContent() {
 
     // Datas disponíveis para o filtro (baseadas na loja selecionada)
     const datasDisponiveisFiltro = useMemo(() => {
-        if (filtroEmpresaId === 0) {
-            // Se nenhuma empresa for selecionada, mostrar todas as datas que têm agendamento
-            const datasUnicas = Array.from(new Set(agenda.map(c => c.data))).sort();
-            return datasUnicas.map(d => ({
+        const datasAgenda = (filtroEmpresaId === 0)
+            ? Array.from(new Set(agenda.map(c => c.data))).sort()
+            : Array.from(new Set(agenda.filter(c => c.empresaId === filtroEmpresaId).map(c => c.data))).sort();
+
+        // Datas configuradas na empresa
+        const datasConfig = gerarDatasDisponiveis(empresaFiltro?.configuracaoHorarios);
+
+        // Merge: datas config + datas com agendamentos existentes (sem duplicar)
+        const datasConfigValues = new Set(datasConfig.map(d => d.value));
+        const datasExtras = datasAgenda
+            .filter(d => !datasConfigValues.has(d))
+            .map(d => ({
                 value: d,
                 label: new Date(d + "T00:00:00").toLocaleDateString("pt-BR", {
                     weekday: "short",
@@ -423,8 +431,8 @@ function AgendamentoContent() {
                 }).toUpperCase(),
                 medico: undefined as string | undefined
             }));
-        }
-        return gerarDatasDisponiveis(empresaFiltro?.configuracaoHorarios);
+
+        return [...datasConfig, ...datasExtras].sort((a, b) => a.value.localeCompare(b.value));
     }, [empresaFiltro, agenda, filtroEmpresaId]);
 
     const mostrarMensagem = (tipo: "sucesso" | "erro", texto: string) => {
