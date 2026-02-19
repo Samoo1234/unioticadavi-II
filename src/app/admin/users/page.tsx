@@ -134,6 +134,32 @@ export default function UsersAdminPage() {
         }
     };
 
+    const handleDeleteUser = async (profile: Profile) => {
+        const confirmed = window.confirm(
+            `Tem certeza que deseja EXCLUIR o usuário "${profile.full_name || 'Sem Nome'}"?\n\nEssa ação é irreversível.`
+        );
+        if (!confirmed) return;
+
+        try {
+            const response = await fetch('/api/admin/users/delete', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: profile.id })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Erro ao excluir usuário');
+            }
+
+            alert('Usuário excluído com sucesso!');
+            fetchData();
+        } catch (error: any) {
+            alert('Erro: ' + error.message);
+        }
+    };
+
     if (loading || authLoading) {
         return (
             <MainLayout>
@@ -199,12 +225,18 @@ export default function UsersAdminPage() {
                                             {profile.active ? '● ATIVO' : '○ INATIVO'}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-6 py-4 text-right space-x-3">
                                         <button
                                             onClick={() => setEditingProfile(profile)}
                                             className="text-emerald-500 hover:text-emerald-400 font-black transition-colors"
                                         >
                                             EDITAR
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteUser(profile)}
+                                            className="text-red-500 hover:text-red-400 font-black transition-colors"
+                                        >
+                                            EXCLUIR
                                         </button>
                                     </td>
                                 </tr>
