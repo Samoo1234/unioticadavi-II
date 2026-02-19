@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import MainLayout from "@/components/MainLayout";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,8 +84,8 @@ export default function AuditAdminPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-800 text-gray-400">
                             {logs.map((log) => (
-                                <>
-                                    <tr key={log.id} className="hover:bg-gray-800/20 transition-colors cursor-pointer" onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}>
+                                <Fragment key={log.id}>
+                                    <tr className="hover:bg-gray-800/20 transition-colors cursor-pointer" onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}>
                                         <td className="px-6 py-4 font-mono text-gray-500">
                                             {new Date(log.created_at).toLocaleString('pt-BR')}
                                         </td>
@@ -128,7 +128,7 @@ export default function AuditAdminPage() {
                                             </td>
                                         </tr>
                                     )}
-                                </>
+                                </Fragment>
                             ))}
                         </tbody>
                     </table>
