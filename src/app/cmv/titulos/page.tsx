@@ -252,7 +252,7 @@ export default function TitulosPage() {
                                 <option value="receber">A Receber</option>
                             </select>
                             <input type="text" placeholder="Valor" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
-                            <input type="date" value={form.data_vencimento} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]" />
+                            <input type="date" value={form.data_vencimento} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
                             <input type="text" placeholder="Observação" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm col-span-2" />
                         </div>
                         <div className="flex gap-2">

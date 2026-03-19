@@ -1,0 +1,4 @@
+﻿src/app/estoque/page.tsx(5,10): error TS2305: Module '"@/data/vendasData"' has no exported member 'ProdutoDb'.
+src/components/estoque/EstoqueTabela.tsx(3,10): error TS2305: Module '"@/data/vendasData"' has no exported member 'ProdutoDb'.
+src/components/estoque/EstoqueTable.tsx(48,27): error TS2304: Cannot find name '__import_useState'.
+src/hooks/useEstoque.ts(5,10): error TS2305: Module '"@/data/vendasData"' has no exported member 'ProdutoDb'.

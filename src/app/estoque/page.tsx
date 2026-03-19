@@ -1,156 +1,41 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import MainLayout from "@/components/MainLayout";
-import Panel from "@/components/clinica/Panel";
-import { supabase } from "@/lib/supabase";
-import {
-    Lente,
-    Armacao,
-    StatusEstoque,
-    calcularStatusEstoque,
-} from "@/data/vendasData";
-import { formatarMoeda, parseMoeda } from "@/utils/monetary";
+import { calcularStatusEstoque } from "@/data/vendasData";
 
-type Tab = "lentes" | "armacoes";
-type Modo = "lista" | "cadastro" | "edicao";
+// Hooks
+import { useEstoque, ProdutoDb } from "@/hooks/useEstoque";
+import { useEmpresas } from "@/hooks/useEmpresas";
+import { useFeedback } from "@/hooks/useFeedback";
 
-interface ProdutoDb {
-    id: string;
-    codigo: string;
-    nome: string;
-    marca: string;
-    tipo: string;
-    descricao?: string;
-    quantidade: number;
-    preco_unitario: number;
-    preco_custo: number;
-    ncm?: string;
-    cest?: string;
-    origem?: number;
-    empresa_id?: number;
-    ativo: boolean;
-}
-
-function getStatusColor(status: StatusEstoque): string {
-    switch (status) {
-        case "disponivel": return "text-green-500";
-        case "baixo": return "text-yellow-500";
-        case "critico": return "text-red-500";
-    }
-}
-
-function getStatusLabel(status: StatusEstoque): string {
-    switch (status) {
-        case "disponivel": return "OK";
-        case "baixo": return "BAIXO";
-        case "critico": return "CRÍTICO";
-    }
-}
-
-interface CampoFormProps {
-    label: string;
-    value: string | number;
-    onChange: (value: string) => void;
-    type?: "text" | "number" | "currency";
-    disabled?: boolean;
-}
-
-function CampoForm({ label, value, onChange, type = "text", disabled = false }: CampoFormProps) {
-    const isCurrency = type === "currency";
-    const inputValue = isCurrency ? formatarMoeda(value) : value;
-
-    return (
-        <div>
-            <label className="text-xs text-gray-500 block mb-1">{label}</label>
-            <input
-                type={isCurrency ? "text" : type}
-                value={inputValue}
-                onChange={(e) => {
-                    const val = e.target.value;
-                    if (isCurrency) {
-                        onChange(parseMoeda(val).toString());
-                    } else {
-                        onChange(val);
-                    }
-                }}
-                disabled={disabled}
-                className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none disabled:opacity-50 ${isCurrency || type === "number" ? "text-right font-mono" : ""}`}
-            />
-        </div>
-    );
-}
+// Components
+import PageHeader from "@/components/ui/PageHeader";
+import FeedbackMessage from "@/components/ui/FeedbackMessage";
+import UnitSelector from "@/components/ui/UnitSelector";
+import LoadingOverlay from "@/components/ui/LoadingOverlay";
+import { EstoqueTabela } from "@/components/estoque/EstoqueTabela";
+import { EstoqueLenteForm, EstoqueArmacaoForm, FormLente, FormArmacao } from "@/components/estoque/EstoqueForms";
 
 export default function EstoquePage() {
-    const [tab, setTab] = useState<Tab>("lentes");
-    const [modo, setModo] = useState<Modo>("lista");
-    const [produtosDb, setProdutosDb] = useState<ProdutoDb[]>([]);
-    const [empresas, setEmpresas] = useState<any[]>([]);
+    const [tab, setTab] = useState<"lentes" | "armacoes">("lentes");
+    const [modo, setModo] = useState<"lista" | "cadastro" | "edicao">("lista");
     const [unidadeSelecionada, setUnidadeSelecionada] = useState<string>("geral");
-    const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
-    const [loading, setLoading] = useState(true);
     const [produtoEditando, setProdutoEditando] = useState<ProdutoDb | null>(null);
 
-    // Form states
-    const [formLente, setFormLente] = useState({
-        codigo: "",
-        nome: "",
-        tipo: "Monofocal",
-        marca: "",
-        material: "CR-39",
-        quantidade: "",
-        precoUnitario: "",
-        precoCusto: "",
-        ncm: "",
-        cest: "",
-        origem: "0",
+    const { empresas } = useEmpresas(false);
+    const { produtosDb, loading, salvarProduto, atualizarProduto, excluirProduto } = useEstoque(unidadeSelecionada);
+    const { mensagem, sucesso, erro } = useFeedback();
+
+    const [formLente, setFormLente] = useState<FormLente>({
+        codigo: "", nome: "", tipo: "Monofocal", marca: "", material: "CR-39",
+        quantidade: "", precoUnitario: "", precoCusto: "", ncm: "", cest: "", origem: "0",
     });
 
-    const [formArmacao, setFormArmacao] = useState({
-        codigo: "",
-        nome: "",
-        marca: "",
-        modelo: "",
-        cor: "",
-        quantidade: "",
-        precoUnitario: "",
-        precoCusto: "",
-        ncm: "",
-        cest: "",
-        origem: "0",
+    const [formArmacao, setFormArmacao] = useState<FormArmacao>({
+        codigo: "", nome: "", marca: "", modelo: "", cor: "",
+        quantidade: "", precoUnitario: "", precoCusto: "", ncm: "", cest: "", origem: "0",
     });
-
-    // Buscar dados do Supabase
-    useEffect(() => {
-        fetchEmpresas();
-        fetchProdutos();
-    }, [unidadeSelecionada]);
-
-    const fetchEmpresas = async () => {
-        const { data } = await supabase.from('empresas').select('id, nome_fantasia');
-        if (data) setEmpresas(data);
-    };
-
-    const fetchProdutos = async () => {
-        setLoading(true);
-        let query = supabase.from('produtos').select('*').eq('ativo', true);
-
-        if (unidadeSelecionada !== "geral") {
-            query = query.eq('empresa_id', parseInt(unidadeSelecionada));
-        }
-
-        const { data, error } = await query.order('nome');
-
-        if (!error && data) {
-            setProdutosDb(data);
-        }
-        setLoading(false);
-    };
-
-    const mostrarMensagem = (tipo: "sucesso" | "erro", texto: string) => {
-        setMensagem({ tipo, texto });
-        setTimeout(() => setMensagem(null), 3000);
-    };
 
     const resetForms = () => {
         setFormLente({
@@ -164,10 +49,9 @@ export default function EstoquePage() {
         setProdutoEditando(null);
     };
 
-    // ===== CREATE =====
     const handleSalvarLente = async () => {
         if (!formLente.codigo || !formLente.nome || !formLente.marca) {
-            mostrarMensagem("erro", "PREENCHA OS CAMPOS OBRIGATÓRIOS");
+            erro("PREENCHA OS CAMPOS OBRIGATÓRIOS");
             return;
         }
 
@@ -186,21 +70,44 @@ export default function EstoquePage() {
             ativo: true
         };
 
-        const { error } = await supabase.from('produtos').insert(dados);
-
+        const { error } = await salvarProduto(dados);
         if (!error) {
-            fetchProdutos();
             resetForms();
             setModo("lista");
-            mostrarMensagem("sucesso", "LENTE CADASTRADA COM SUCESSO");
+            sucesso("LENTE CADASTRADA COM SUCESSO");
         } else {
-            mostrarMensagem("erro", "ERRO AO SALVAR: " + error.message);
+            erro("ERRO AO SALVAR: " + error.message);
+        }
+    };
+
+    const handleAtualizarLente = async () => {
+        if (!produtoEditando) return;
+
+        const dados = {
+            codigo: formLente.codigo,
+            nome: formLente.nome,
+            marca: formLente.marca,
+            quantidade: parseInt(formLente.quantidade) || 0,
+            preco_unitario: parseFloat(formLente.precoUnitario) || 0,
+            preco_custo: parseFloat(formLente.precoCusto) || 0,
+            ncm: formLente.ncm,
+            cest: formLente.cest,
+            origem: parseInt(formLente.origem),
+        };
+
+        const { error } = await atualizarProduto(produtoEditando.id, dados);
+        if (!error) {
+            resetForms();
+            setModo("lista");
+            sucesso("LENTE ATUALIZADA COM SUCESSO");
+        } else {
+            erro("ERRO AO ATUALIZAR: " + error.message);
         }
     };
 
     const handleSalvarArmacao = async () => {
         if (!formArmacao.codigo || !formArmacao.nome || !formArmacao.marca) {
-            mostrarMensagem("erro", "PREENCHA OS CAMPOS OBRIGATÓRIOS");
+            erro("PREENCHA OS CAMPOS OBRIGATÓRIOS");
             return;
         }
 
@@ -220,19 +127,42 @@ export default function EstoquePage() {
             ativo: true
         };
 
-        const { error } = await supabase.from('produtos').insert(dados);
-
+        const { error } = await salvarProduto(dados);
         if (!error) {
-            fetchProdutos();
             resetForms();
             setModo("lista");
-            mostrarMensagem("sucesso", "ARMAÇÃO CADASTRADA COM SUCESSO");
+            sucesso("ARMAÇÃO CADASTRADA COM SUCESSO");
         } else {
-            mostrarMensagem("erro", "ERRO AO SALVAR: " + error.message);
+            erro("ERRO AO SALVAR: " + error.message);
         }
     };
 
-    // ===== UPDATE =====
+    const handleAtualizarArmacao = async () => {
+        if (!produtoEditando) return;
+
+        const dados = {
+            codigo: formArmacao.codigo,
+            nome: formArmacao.nome,
+            marca: formArmacao.marca,
+            descricao: formArmacao.modelo,
+            quantidade: parseInt(formArmacao.quantidade) || 0,
+            preco_unitario: parseFloat(formArmacao.precoUnitario) || 0,
+            preco_custo: parseFloat(formArmacao.precoCusto) || 0,
+            ncm: formArmacao.ncm,
+            cest: formArmacao.cest,
+            origem: parseInt(formArmacao.origem),
+        };
+
+        const { error } = await atualizarProduto(produtoEditando.id, dados);
+        if (!error) {
+            resetForms();
+            setModo("lista");
+            sucesso("ARMAÇÃO ATUALIZADA COM SUCESSO");
+        } else {
+            erro("ERRO AO ATUALIZAR: " + error.message);
+        }
+    };
+
     const handleEditar = (produto: ProdutoDb) => {
         setProdutoEditando(produto);
         if (produto.tipo === 'lente') {
@@ -269,81 +199,20 @@ export default function EstoquePage() {
         setModo("edicao");
     };
 
-    const handleAtualizarLente = async () => {
-        if (!produtoEditando) return;
-
-        const dados = {
-            codigo: formLente.codigo,
-            nome: formLente.nome,
-            marca: formLente.marca,
-            quantidade: parseInt(formLente.quantidade) || 0,
-            preco_unitario: parseFloat(formLente.precoUnitario) || 0,
-            preco_custo: parseFloat(formLente.precoCusto) || 0,
-            ncm: formLente.ncm,
-            cest: formLente.cest,
-            origem: parseInt(formLente.origem),
-        };
-
-        const { error } = await supabase.from('produtos').update(dados).eq('id', produtoEditando.id);
-
-        if (!error) {
-            fetchProdutos();
-            resetForms();
-            setModo("lista");
-            mostrarMensagem("sucesso", "LENTE ATUALIZADA COM SUCESSO");
-        } else {
-            mostrarMensagem("erro", "ERRO AO ATUALIZAR: " + error.message);
-        }
-    };
-
-    const handleAtualizarArmacao = async () => {
-        if (!produtoEditando) return;
-
-        const dados = {
-            codigo: formArmacao.codigo,
-            nome: formArmacao.nome,
-            marca: formArmacao.marca,
-            descricao: formArmacao.modelo,
-            quantidade: parseInt(formArmacao.quantidade) || 0,
-            preco_unitario: parseFloat(formArmacao.precoUnitario) || 0,
-            preco_custo: parseFloat(formArmacao.precoCusto) || 0,
-            ncm: formArmacao.ncm,
-            cest: formArmacao.cest,
-            origem: parseInt(formArmacao.origem),
-        };
-
-        const { error } = await supabase.from('produtos').update(dados).eq('id', produtoEditando.id);
-
-        if (!error) {
-            fetchProdutos();
-            resetForms();
-            setModo("lista");
-            mostrarMensagem("sucesso", "ARMAÇÃO ATUALIZADA COM SUCESSO");
-        } else {
-            mostrarMensagem("erro", "ERRO AO ATUALIZAR: " + error.message);
-        }
-    };
-
-    // ===== DELETE =====
     const handleExcluir = async (produto: ProdutoDb) => {
         if (!confirm(`Deseja realmente excluir "${produto.nome}"?`)) return;
 
-        // Soft delete - apenas marca como inativo
-        const { error } = await supabase.from('produtos').update({ ativo: false }).eq('id', produto.id);
-
+        const { error } = await excluirProduto(produto.id);
         if (!error) {
-            fetchProdutos();
-            mostrarMensagem("sucesso", "PRODUTO EXCLUÍDO COM SUCESSO");
+            sucesso("PRODUTO EXCLUÍDO COM SUCESSO");
         } else {
-            mostrarMensagem("erro", "ERRO AO EXCLUIR: " + error.message);
+            erro("ERRO AO EXCLUIR: " + error.message);
         }
     };
 
-    // Filtrar produtos por tipo
     const lentes = produtosDb.filter(p => p.tipo === 'lente');
     const armacoes = produtosDb.filter(p => p.tipo === 'armacao');
 
-    // Calcular totais
     const getTotais = () => {
         const totalLentes = lentes.reduce((acc, l) => acc + l.quantidade, 0);
         const totalArmacoes = armacoes.reduce((acc, a) => acc + a.quantidade, 0);
@@ -365,36 +234,14 @@ export default function EstoquePage() {
 
     return (
         <MainLayout>
-            <div className="h-full flex flex-col">
-                {/* Header */}
-                <div className="border-b border-gray-800 pb-4 mb-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-8">
-                            <div>
-                                <h1 className="text-xl font-bold tracking-wide text-white">ESTOQUE</h1>
-                                <p className="text-sm text-gray-500 mt-1">Gerenciamento de produtos</p>
-                            </div>
+            <div className="h-full flex flex-col relative">
+                {loading && modo === "lista" && <LoadingOverlay message="CARREGANDO ESTOQUE..." />}
 
-                            <div className="h-10 w-px bg-gray-800"></div>
-
-                            {/* Seletor de Unidade */}
-                            <div>
-                                <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">UNIDADE EXIBIDA</div>
-                                <select
-                                    value={unidadeSelecionada}
-                                    onChange={(e) => setUnidadeSelecionada(e.target.value)}
-                                    className="bg-transparent border-none text-sm font-bold text-white p-0 focus:outline-none cursor-pointer hover:text-green-500 transition-all"
-                                >
-                                    <option value="geral" className="bg-gray-900 text-white">ESTOQUE GERAL (TODAS)</option>
-                                    {empresas.map(emp => (
-                                        <option key={emp.id} value={emp.id} className="bg-gray-900 text-white">{emp.nome_fantasia.toUpperCase()}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            {/* Resumo rápido */}
+                <PageHeader
+                    title="ESTOQUE"
+                    subtitle="Gerenciamento de produtos"
+                    rightContent={
+                        <>
                             <div className="flex items-center gap-6 text-sm">
                                 <div className="text-center">
                                     <div className="text-gray-500 text-xs">LENTES</div>
@@ -417,21 +264,23 @@ export default function EstoquePage() {
                             >
                                 {modo === "lista" ? "+ NOVO PRODUTO" : "← VOLTAR"}
                             </button>
-                        </div>
-                    </div>
+                        </>
+                    }
+                >
+                    <UnitSelector
+                        label="UNIDADE EXIBIDA"
+                        empresas={empresas}
+                        value={unidadeSelecionada}
+                        onChange={setUnidadeSelecionada}
+                        allLabel="ESTOQUE GERAL (TODAS)"
+                    />
+                </PageHeader>
 
-                    {mensagem && (
-                        <div className={`mt-4 px-4 py-2 text-sm font-medium ${mensagem.tipo === "sucesso" ? "bg-green-900/50 border border-green-700 text-green-400" : "bg-red-900/50 border border-red-700 text-red-400"}`}>
-                            {mensagem.texto}
-                        </div>
-                    )}
-                </div>
+                <FeedbackMessage mensagem={mensagem} />
 
-                {/* Conteúdo */}
-                <div className="flex-1 min-h-0">
+                <div className="flex-1 min-h-0 mt-2">
                     {modo === "lista" ? (
                         <div className="flex flex-col h-full">
-                            {/* Tabs */}
                             <div className="flex border-b border-gray-800 mb-4">
                                 <button
                                     onClick={() => setTab("lentes")}
@@ -453,260 +302,28 @@ export default function EstoquePage() {
                                 </button>
                             </div>
 
-                            {/* Tabela */}
                             <div className="flex-1 overflow-auto">
-                                {loading ? (
-                                    <div className="p-4 text-gray-500 text-sm">Carregando...</div>
-                                ) : (
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-gray-900 sticky top-0">
-                                            <tr className="text-xs text-gray-500 border-b border-gray-800">
-                                                <th className="text-left py-3 px-4">CÓDIGO</th>
-                                                <th className="text-left py-3 px-4">PRODUTO</th>
-                                                <th className="text-left py-3 px-4">MARCA</th>
-                                                <th className="text-right py-3 px-4">CUSTO</th>
-                                                <th className="text-right py-3 px-4">VENDA</th>
-                                                <th className="text-center py-3 px-4">QTD</th>
-                                                <th className="text-center py-3 px-4">STATUS</th>
-                                                <th className="text-center py-3 px-4">AÇÕES</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(tab === "lentes" ? lentes : armacoes).map((produto) => {
-                                                const status = calcularStatusEstoque(produto.quantidade);
-                                                return (
-                                                    <tr key={produto.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                                                        <td className="py-3 px-4 font-mono text-gray-400">{produto.codigo || "—"}</td>
-                                                        <td className="py-3 px-4 text-white">{produto.nome}</td>
-                                                        <td className="py-3 px-4 text-gray-400">{produto.marca || "—"}</td>
-                                                        <td className="py-3 px-4 text-right font-mono text-yellow-500">
-                                                            R$ {formatarMoeda(produto.preco_custo || 0)}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-right font-mono text-white">
-                                                            R$ {formatarMoeda(produto.preco_unitario)}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-center font-mono text-white">
-                                                            {produto.quantidade}
-                                                        </td>
-                                                        <td className={`py-3 px-4 text-center font-medium ${getStatusColor(status)}`}>
-                                                            {getStatusLabel(status)}
-                                                        </td>
-                                                        <td className="py-3 px-4 text-center">
-                                                            <button
-                                                                onClick={() => handleEditar(produto)}
-                                                                className="text-blue-500 hover:text-blue-400 text-xs font-medium mr-3"
-                                                            >
-                                                                EDITAR
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleExcluir(produto)}
-                                                                className="text-red-500 hover:text-red-400 text-xs font-medium"
-                                                            >
-                                                                EXCLUIR
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                )}
+                                <EstoqueTabela
+                                    produtos={tab === "lentes" ? lentes : armacoes}
+                                    onEditar={handleEditar}
+                                    onExcluir={handleExcluir}
+                                />
                             </div>
                         </div>
                     ) : (
-                        /* Formulário de Cadastro/Edição */
-                        <div className="grid grid-cols-2 gap-6">
-                            {/* Cadastro de Lente */}
-                            <Panel title={modo === "edicao" && produtoEditando?.tipo === "lente" ? "EDITAR LENTE" : "NOVA LENTE"} className="h-fit">
-                                <div className="p-4 space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm
-                                            label="CÓDIGO *"
-                                            value={formLente.codigo}
-                                            onChange={(v) => setFormLente({ ...formLente, codigo: v })}
-                                        />
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">TIPO</label>
-                                            <select
-                                                value={formLente.tipo}
-                                                onChange={(e) => setFormLente({ ...formLente, tipo: e.target.value })}
-                                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                            >
-                                                <option value="Monofocal">Monofocal</option>
-                                                <option value="Bifocal">Bifocal</option>
-                                                <option value="Progressiva">Progressiva</option>
-                                                <option value="Contato">Contato</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <CampoForm
-                                        label="NOME *"
-                                        value={formLente.nome}
-                                        onChange={(v) => setFormLente({ ...formLente, nome: v })}
-                                    />
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm
-                                            label="MARCA *"
-                                            value={formLente.marca}
-                                            onChange={(v) => setFormLente({ ...formLente, marca: v })}
-                                        />
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">MATERIAL</label>
-                                            <select
-                                                value={formLente.material}
-                                                onChange={(e) => setFormLente({ ...formLente, material: e.target.value })}
-                                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                            >
-                                                <option value="CR-39">CR-39</option>
-                                                <option value="Policarbonato">Policarbonato</option>
-                                                <option value="Trivex">Trivex</option>
-                                                <option value="Alto Índice">Alto Índice</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <CampoForm
-                                            label="QUANTIDADE"
-                                            value={formLente.quantidade}
-                                            onChange={(v) => setFormLente({ ...formLente, quantidade: v })}
-                                            type="number"
-                                        />
-                                        <CampoForm
-                                            label="PREÇO CUSTO"
-                                            value={formLente.precoCusto}
-                                            onChange={(v) => setFormLente({ ...formLente, precoCusto: v })}
-                                            type="currency"
-                                        />
-                                        <CampoForm
-                                            label="PREÇO VENDA"
-                                            value={formLente.precoUnitario}
-                                            onChange={(v) => setFormLente({ ...formLente, precoUnitario: v })}
-                                            type="currency"
-                                        />
-                                    </div>
-                                    <div className="pt-2 border-t border-gray-800">
-                                        <div className="text-[10px] text-gray-500 font-bold mb-2 uppercase tracking-widest">Informações Fiscais</div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <CampoForm
-                                                label="NCM"
-                                                value={formLente.ncm}
-                                                onChange={(v) => setFormLente({ ...formLente, ncm: v })}
-                                            />
-                                            <CampoForm
-                                                label="CEST"
-                                                value={formLente.cest}
-                                                onChange={(v) => setFormLente({ ...formLente, cest: v })}
-                                            />
-                                        </div>
-                                        <div className="mt-4">
-                                            <label className="text-xs text-gray-500 block mb-1">ORIGEM DO PRODUTO</label>
-                                            <select
-                                                value={formLente.origem}
-                                                onChange={(e) => setFormLente({ ...formLente, origem: e.target.value })}
-                                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                            >
-                                                <option value="0">0 - Nacional</option>
-                                                <option value="1">1 - Estrangeira (Importação Direta)</option>
-                                                <option value="2">2 - Estrangeira (Adquirida no Mercado Interno)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={modo === "edicao" && produtoEditando?.tipo === "lente" ? handleAtualizarLente : handleSalvarLente}
-                                        className="w-full px-4 py-2 bg-green-700 border border-green-600 text-sm font-medium text-white hover:bg-green-600"
-                                    >
-                                        {modo === "edicao" && produtoEditando?.tipo === "lente" ? "ATUALIZAR LENTE" : "SALVAR LENTE"}
-                                    </button>
-                                </div>
-                            </Panel>
-
-                            {/* Cadastro de Armação */}
-                            <Panel title={modo === "edicao" && produtoEditando?.tipo === "armacao" ? "EDITAR ARMAÇÃO" : "NOVA ARMAÇÃO"} className="h-fit">
-                                <div className="p-4 space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm
-                                            label="CÓDIGO *"
-                                            value={formArmacao.codigo}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, codigo: v })}
-                                        />
-                                        <CampoForm
-                                            label="MODELO"
-                                            value={formArmacao.modelo}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, modelo: v })}
-                                        />
-                                    </div>
-                                    <CampoForm
-                                        label="NOME *"
-                                        value={formArmacao.nome}
-                                        onChange={(v) => setFormArmacao({ ...formArmacao, nome: v })}
-                                    />
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <CampoForm
-                                            label="MARCA *"
-                                            value={formArmacao.marca}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, marca: v })}
-                                        />
-                                        <CampoForm
-                                            label="COR"
-                                            value={formArmacao.cor}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, cor: v })}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <CampoForm
-                                            label="QUANTIDADE"
-                                            value={formArmacao.quantidade}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, quantidade: v })}
-                                            type="number"
-                                        />
-                                        <CampoForm
-                                            label="PREÇO CUSTO"
-                                            value={formArmacao.precoCusto}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, precoCusto: v })}
-                                            type="currency"
-                                        />
-                                        <CampoForm
-                                            label="PREÇO VENDA"
-                                            value={formArmacao.precoUnitario}
-                                            onChange={(v) => setFormArmacao({ ...formArmacao, precoUnitario: v })}
-                                            type="currency"
-                                        />
-                                    </div>
-                                    <div className="pt-2 border-t border-gray-800">
-                                        <div className="text-[10px] text-gray-500 font-bold mb-2 uppercase tracking-widest">Informações Fiscais</div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <CampoForm
-                                                label="NCM"
-                                                value={formArmacao.ncm}
-                                                onChange={(v) => setFormArmacao({ ...formArmacao, ncm: v })}
-                                            />
-                                            <CampoForm
-                                                label="CEST"
-                                                value={formArmacao.cest}
-                                                onChange={(v) => setFormArmacao({ ...formArmacao, cest: v })}
-                                            />
-                                        </div>
-                                        <div className="mt-4">
-                                            <label className="text-xs text-gray-500 block mb-1">ORIGEM DO PRODUTO</label>
-                                            <select
-                                                value={formArmacao.origem}
-                                                onChange={(e) => setFormArmacao({ ...formArmacao, origem: e.target.value })}
-                                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                                            >
-                                                <option value="0">0 - Nacional</option>
-                                                <option value="1">1 - Estrangeira (Importação Direta)</option>
-                                                <option value="2">2 - Estrangeira (Adquirida no Mercado Interno)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <button
-                                        onClick={modo === "edicao" && produtoEditando?.tipo === "armacao" ? handleAtualizarArmacao : handleSalvarArmacao}
-                                        className="w-full px-4 py-2 bg-green-700 border border-green-600 text-sm font-medium text-white hover:bg-green-600"
-                                    >
-                                        {modo === "edicao" && produtoEditando?.tipo === "armacao" ? "ATUALIZAR ARMAÇÃO" : "SALVAR ARMAÇÃO"}
-                                    </button>
-                                </div>
-                            </Panel>
+                        <div className="grid grid-cols-2 gap-6 pb-6 overflow-y-auto h-full">
+                            <EstoqueLenteForm
+                                form={formLente}
+                                setForm={setFormLente}
+                                onSave={modo === "edicao" && produtoEditando?.tipo === "lente" ? handleAtualizarLente : handleSalvarLente}
+                                isEdicao={modo === "edicao" && produtoEditando?.tipo === "lente"}
+                            />
+                            <EstoqueArmacaoForm
+                                form={formArmacao}
+                                setForm={setFormArmacao}
+                                onSave={modo === "edicao" && produtoEditando?.tipo === "armacao" ? handleAtualizarArmacao : handleSalvarArmacao}
+                                isEdicao={modo === "edicao" && produtoEditando?.tipo === "armacao"}
+                            />
                         </div>
                     )}
                 </div>

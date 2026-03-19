@@ -3,6 +3,58 @@ import { HistoricoConsulta, historicoConsultas, pacienteEmAtendimento } from "./
 
 export type StatusEstoque = "disponivel" | "baixo" | "critico";
 
+export interface ProdutoSupabase {
+    id: string;
+    tipo: string;
+    nome: string;
+    codigo: string | null;
+    marca: string | null;
+    preco_unitario: number;
+    quantidade: number;
+    quantidade_minima: number;
+}
+
+export interface EmpresaSupabase {
+    id: number;
+    nome_fantasia: string;
+    telefone: string;
+    cidade: string;
+    estado: string;
+    endereco: {
+        logradouro: string;
+        numero: string;
+        complemento?: string;
+        bairro: string;
+        cidade: string;
+        estado: string;
+        cep: string;
+    } | null;
+    cnpj?: string;
+}
+
+export interface ConsultaSupabase {
+    id: string;
+    paciente_id: string;
+    data: string;
+    queixa_principal: string | null;
+    tipo_lente: string | null;
+    observacoes_receita: string | null;
+    exame_od_esferico: string | null;
+    exame_od_cilindrico: string | null;
+    exame_od_eixo: string | null;
+    exame_od_adicao: string | null;
+    exame_od_dnp: string | null;
+    exame_oe_esferico: string | null;
+    exame_oe_cilindrico: string | null;
+    exame_oe_eixo: string | null;
+    exame_oe_adicao: string | null;
+    exame_oe_dnp: string | null;
+    pacientes: {
+        id: string;
+        nome: string;
+    } | null;
+}
+
 export interface Lente {
     id: number;
     codigo: string;

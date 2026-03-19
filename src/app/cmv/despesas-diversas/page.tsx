@@ -183,8 +183,8 @@ export default function DespesasDiversasPage() {
                                 <option value="">Todas Categorias</option>
                                 {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                             </select>
-                            <input type="date" value={filtros.dataInicio} onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]" />
-                            <input type="date" value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]" />
+                            <input type="date" value={filtros.dataInicio} onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
+                            <input type="date" value={filtros.dataFim} onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
                             <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-medium">
                                 NOVA DESPESA
                             </button>
@@ -209,7 +209,7 @@ export default function DespesasDiversasPage() {
                         <div className="grid grid-cols-4 gap-4 mb-4">
                             <input type="text" placeholder="Nome/Descrição *" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
                             <input type="text" placeholder="Valor *" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
-                            <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]" />
+                            <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
                             <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Empresa...</option>
                                 {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}

@@ -603,7 +603,7 @@ export default function EmpresasPage() {
 
                                             <div className="space-y-4">
                                                 <div className="p-6 bg-gray-900/50 border border-dashed border-gray-700 rounded-lg flex flex-col items-center justify-center text-center">
-                                                    <label className="text-xs font-bold text-gray-400 block mb-4 uppercase tracking-widest text-green-500">Certificado Digital (.pfx)</label>
+                                                    <label className="text-xs font-bold block mb-4 uppercase tracking-widest text-green-500">Certificado Digital (.pfx)</label>
                                                     <div className="w-full">
                                                         <input
                                                             type="file"

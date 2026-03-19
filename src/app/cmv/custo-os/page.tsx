@@ -327,7 +327,7 @@ export default function CustoOSPage() {
                             </div>
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">DATA</label>
-                                <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="w-full bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]" />
+                                <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="w-full bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
                             </div>
 
                             {/* Campo TSO com Autocomplete */}

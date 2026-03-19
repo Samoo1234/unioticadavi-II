@@ -106,13 +106,13 @@ export default function RelatorioOSPage() {
                                 type="date"
                                 value={filtros.dataInicio}
                                 onChange={(e) => setFiltros({ ...filtros, dataInicio: e.target.value })}
-                                className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]"
+                                className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark"
                             />
                             <input
                                 type="date"
                                 value={filtros.dataFim}
                                 onChange={(e) => setFiltros({ ...filtros, dataFim: e.target.value })}
-                                className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm [color-scheme:dark]"
+                                className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark"
                             />
                             <button onClick={handleGerarPDF} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium">
                                 IMPRIMIR
