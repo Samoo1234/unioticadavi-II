@@ -582,3 +582,251 @@ export function imprimirRelatorioListaOperacional(data: ReportAgendaOperacionalD
         windowPrint.document.close();
     }
 }
+
+export interface ReportTransferenciaData {
+    protocolo: string;
+    status: string;
+    origem: string;
+    destino: string;
+    dataCriacao: string;
+    dataEnvio: string;
+    dataRecebimento: string;
+    operadorCriacao: string;
+    operadorRecebimento: string;
+    observacoes: string;
+    motivoParcial: string;
+    motivoCancelamento: string;
+    itens: {
+        codigo: string;
+        nome: string;
+        marca: string;
+        tipo: string;
+        qtdEnviada: number;
+        qtdRecebida: number | null;
+    }[];
+}
+
+export function gerarRelatorioTransferenciaHTML(data: ReportTransferenciaData): string {
+    const statusLabel: Record<string, string> = {
+        pendente: "PENDENTE",
+        em_transito: "EM TRÂNSITO",
+        recebido: "RECEBIDO",
+        recebido_parcial: "RECEBIDO PARCIAL",
+        cancelado: "CANCELADO",
+    };
+
+    const totalEnviado = data.itens.reduce((acc, i) => acc + i.qtdEnviada, 0);
+    const totalRecebido = data.itens.reduce((acc, i) => acc + (i.qtdRecebida ?? 0), 0);
+
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Transferência ${data.protocolo} - ${data.origem} → ${data.destino}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            font-size: 11px; 
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            color: #000;
+        }
+        .report-container {
+            border: 2px solid #000;
+            padding: 15px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+        .header h2 { font-size: 14px; color: #333; margin-bottom: 5px; }
+        .header .protocolo { font-size: 18px; font-weight: bold; font-family: 'Courier New', Courier, monospace; margin-top: 8px; }
+        
+        .info-grid { display: flex; border-bottom: 1px solid #000; margin-bottom: 15px; }
+        .info-cell { flex: 1; padding: 5px 8px; border-right: 1px solid #999; }
+        .info-cell:last-child { border-right: none; }
+        .info-cell label { font-weight: bold; font-size: 9px; color: #666; display: block; text-transform: uppercase; }
+        .info-cell span { font-size: 11px; font-weight: bold; }
+
+        .section-title { 
+            background: #eee; 
+            padding: 5px 10px; 
+            font-weight: bold; 
+            font-size: 11px;
+            border: 1px solid #000;
+            margin-top: 15px;
+        }
+
+        .summary-grid { display: flex; flex-wrap: wrap; margin: 10px 0; border: 1px solid #999; }
+        .summary-cell { 
+            flex: 1; 
+            min-width: 120px; 
+            padding: 10px; 
+            text-align: center; 
+            border-right: 1px solid #999;
+        }
+        .summary-cell:last-child { border-right: none; }
+        .summary-cell label { font-size: 10px; font-weight: bold; color: #444; display: block; margin-bottom: 4px; }
+        .summary-cell span { font-size: 16px; font-weight: bold; font-family: 'Courier New', Courier, monospace; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; font-size: 10px; }
+        th { background: #f2f2f2; font-weight: bold; text-transform: uppercase; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .font-mono { font-family: 'Courier New', Courier, monospace; }
+
+        .obs-box {
+            border: 1px solid #999;
+            padding: 8px 10px;
+            margin-top: 10px;
+            min-height: 30px;
+        }
+        .obs-box label { font-weight: bold; font-size: 9px; color: #666; display: block; text-transform: uppercase; margin-bottom: 4px; }
+        .obs-box p { font-size: 11px; }
+
+        .signature-grid {
+            display: flex;
+            margin-top: 40px;
+            gap: 30px;
+        }
+        .signature-cell {
+            flex: 1;
+            text-align: center;
+            padding-top: 5px;
+            border-top: 1px solid #000;
+        }
+        .signature-cell label { font-size: 9px; color: #666; text-transform: uppercase; }
+
+        .footer { 
+            margin-top: 30px; 
+            text-align: center; 
+            font-size: 10px; 
+            color: #666; 
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+
+        @media print {
+            body { padding: 0; }
+            .report-container { border-width: 1px; }
+            @page { margin: 1cm; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="header">
+            <h1>ÓTICA DAVI</h1>
+            <h2>PROTOCOLO DE TRANSFERÊNCIA DE ESTOQUE</h2>
+            <div class="protocolo">${data.protocolo}</div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-cell"><label>Origem:</label><span>${data.origem}</span></div>
+            <div class="info-cell"><label>Destino:</label><span>${data.destino}</span></div>
+            <div class="info-cell"><label>Status:</label><span>${statusLabel[data.status] || data.status.toUpperCase()}</span></div>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-cell"><label>Data Criação:</label><span>${data.dataCriacao}</span></div>
+            <div class="info-cell"><label>Data Envio:</label><span>${data.dataEnvio || '—'}</span></div>
+            <div class="info-cell"><label>Data Recebimento:</label><span>${data.dataRecebimento || '—'}</span></div>
+            <div class="info-cell"><label>Hora Impressão:</label><span>${new Date().toLocaleTimeString('pt-BR')}</span></div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-cell"><label>TOTAL ITENS</label><span>${data.itens.length}</span></div>
+            <div class="summary-cell"><label>QTD ENVIADA</label><span>${totalEnviado}</span></div>
+            <div class="summary-cell"><label>QTD RECEBIDA</label><span>${totalRecebido > 0 ? totalRecebido : '—'}</span></div>
+        </div>
+
+        <div class="section-title">ITENS DA TRANSFERÊNCIA</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 70px;">Código</th>
+                    <th>Produto</th>
+                    <th>Marca</th>
+                    <th style="width: 80px;">Tipo</th>
+                    <th class="text-center" style="width: 80px;">Enviado</th>
+                    <th class="text-center" style="width: 80px;">Recebido</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${data.itens.map(item => `
+                    <tr>
+                        <td class="font-mono">${item.codigo || '—'}</td>
+                        <td style="font-weight: bold;">${item.nome.toUpperCase()}</td>
+                        <td>${item.marca || '—'}</td>
+                        <td>${(item.tipo || '—').toUpperCase()}</td>
+                        <td class="text-center font-mono">${item.qtdEnviada}</td>
+                        <td class="text-center font-mono">${item.qtdRecebida !== null ? item.qtdRecebida : '—'}</td>
+                    </tr>
+                `).join('')}
+                <tr style="font-weight: bold; background: #f9f9f9;">
+                    <td colspan="4" class="text-right">TOTAL</td>
+                    <td class="text-center font-mono">${totalEnviado}</td>
+                    <td class="text-center font-mono">${totalRecebido > 0 ? totalRecebido : '—'}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        ${data.observacoes ? `
+        <div class="obs-box">
+            <label>Observações</label>
+            <p>${data.observacoes}</p>
+        </div>
+        ` : ''}
+
+        ${data.motivoParcial ? `
+        <div class="obs-box" style="border-color: #cc8800;">
+            <label style="color: #cc8800;">Motivo do Recebimento Parcial</label>
+            <p>${data.motivoParcial}</p>
+        </div>
+        ` : ''}
+
+        ${data.motivoCancelamento ? `
+        <div class="obs-box" style="border-color: #cc0000;">
+            <label style="color: #cc0000;">Motivo do Cancelamento</label>
+            <p>${data.motivoCancelamento}</p>
+        </div>
+        ` : ''}
+
+        <div class="signature-grid">
+            <div class="signature-cell">
+                <label>Responsável pelo Envio</label>
+            </div>
+            <div class="signature-cell">
+                <label>Responsável pelo Recebimento</label>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Documento gerado pelo Sistema Ótica Davi - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>
+            <p>Conferido por: __________________________________________________</p>
+        </div>
+    </div>
+    
+    <script>
+        window.onload = function() { window.print(); }
+    </script>
+</body>
+</html>`;
+}
+
+export function imprimirRelatorioTransferencia(data: ReportTransferenciaData) {
+    const html = gerarRelatorioTransferenciaHTML(data);
+    const windowPrint = window.open('', '_blank');
+    if (windowPrint) {
+        windowPrint.document.write(html);
+        windowPrint.document.close();
+    }
+}
