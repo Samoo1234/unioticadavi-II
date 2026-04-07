@@ -830,3 +830,205 @@ export function imprimirRelatorioTransferencia(data: ReportTransferenciaData) {
         windowPrint.document.close();
     }
 }
+
+export interface ReportFluxoSemanalData {
+    titulo: string;
+    dataInicio: string;
+    dataFim: string;
+    unidade: string;
+    operador: string;
+    diasDaSemana: string[]; // ["SEG (12/05)", "TER (13/05)", ...]
+    categoriasEntrada: { nome: string; valores: (number | null)[]; total: number }[];
+    categoriasSaida: { nome: string; valores: (number | null)[]; total: number }[];
+    totaisEntradaPorDia: number[];
+    totaisSaidaPorDia: number[];
+    saldosPorDia: number[];
+    eventosPorDia: string[]; // one observation per day
+    totalGeralEntradas: number;
+    totalGeralSaidas: number;
+    saldoVisaoFinal: number;
+}
+
+export function gerarRelatorioFluxoSemanalHTML(data: ReportFluxoSemanalData): string {
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>${data.titulo} - ${data.unidade}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            font-size: 10px; 
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            color: #000;
+        }
+        .report-container {
+            border: 2px solid #000;
+            padding: 15px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+        .header h2 { font-size: 14px; color: #333; margin-bottom: 5px; }
+        
+        .info-grid { display: flex; border-bottom: 1px solid #000; margin-bottom: 15px; }
+        .info-cell { flex: 1; padding: 5px 8px; border-right: 1px solid #999; }
+        .info-cell:last-child { border-right: none; }
+        .info-cell label { font-weight: bold; font-size: 9px; color: #666; display: block; text-transform: uppercase; }
+        .info-cell span { font-size: 11px; font-weight: bold; }
+
+        .section-title { 
+            background: #eee; 
+            padding: 5px 10px; 
+            font-weight: bold; 
+            font-size: 11px;
+            border: 1px solid #000;
+            margin-top: 15px;
+        }
+
+        .summary-grid { display: flex; flex-wrap: wrap; margin: 10px 0; border: 1px solid #999; }
+        .summary-cell { 
+            flex: 1; 
+            min-width: 120px; 
+            padding: 10px; 
+            text-align: center; 
+            border-right: 1px solid #999;
+        }
+        .summary-cell:last-child { border-right: none; }
+        .summary-cell label { font-size: 10px; font-weight: bold; color: #444; display: block; margin-bottom: 4px; }
+        .summary-cell span { font-size: 14px; font-weight: bold; font-family: 'Courier New', Courier, monospace; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 9px; }
+        th, td { border: 1px solid #999; padding: 4px; text-align: right; }
+        th { background: #f2f2f2; font-weight: bold; text-align: center; }
+        th:first-child, td:first-child { text-align: left; font-weight: bold; }
+        
+        .row-total { background: #f9f9f9; font-weight: bold; }
+        .text-green { color: #006400; }
+        .text-red { color: #8b0000; }
+        .font-mono { font-family: 'Courier New', Courier, monospace; }
+
+        .footer { 
+            margin-top: 30px; 
+            text-align: center; 
+            font-size: 10px; 
+            color: #666; 
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+
+        @media print {
+            body { padding: 0; }
+            .report-container { border-width: 1px; }
+            @page { margin: 1cm; size: landscape; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="header">
+            <h1>ÓTICA DAVI</h1>
+            <h2>${data.titulo}</h2>
+            <p>PERÍODO: ${data.dataInicio} a ${data.dataFim}</p>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-cell"><label>Unidade:</label><span>${data.unidade}</span></div>
+            <div class="info-cell"><label>Emissão:</label><span>${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</span></div>
+            <div class="info-cell"><label>Operador:</label><span>${data.operador}</span></div>
+        </div>
+
+        <div class="summary-grid">
+            <div class="summary-cell"><label>TOTAL ENTRADAS NA SEMANA</label><span class="text-green">R$ ${formatarMoeda(data.totalGeralEntradas)}</span></div>
+            <div class="summary-cell"><label>TOTAL SAÍDAS NA SEMANA</label><span class="text-red">R$ ${formatarMoeda(data.totalGeralSaidas)}</span></div>
+            <div class="summary-cell"><label>RESTANTE / CAIXA LIVRE</label><span class="${data.saldoVisaoFinal >= 0 ? 'text-green' : 'text-red'}">R$ ${formatarMoeda(data.saldoVisaoFinal)}</span></div>
+        </div>
+
+        <div class="section-title">DETALHAMENTO SEMANAL DE CAIXA</div>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 20%;">CATEGORIAS</th>
+                    ${data.diasDaSemana.map(dia => `<th>${dia}</th>`).join('')}
+                    <th style="width: 10%;">T. DA L.</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="${data.diasDaSemana.length + 2}" style="background:#eee; text-align:left; font-weight:bold; font-size:10px;">(+) ENTRADAS (RECEITAS E APORTES)</td></tr>
+                ${data.categoriasEntrada.map(cat => `
+                    <tr>
+                        <td>${cat.nome.toUpperCase()}</td>
+                        ${cat.valores.map(v => `<td class="font-mono">${v !== null ? formatarMoeda(v) : '-'}</td>`).join('')}
+                        <td class="font-mono" style="font-weight:bold;">${formatarMoeda(cat.total)}</td>
+                    </tr>
+                `).join('')}
+                <tr class="row-total">
+                    <td>SUBTOTAL ENTRADAS</td>
+                    ${data.totaisEntradaPorDia.map(v => `<td class="font-mono text-green">${formatarMoeda(v)}</td>`).join('')}
+                    <td class="font-mono text-green">${formatarMoeda(data.totalGeralEntradas)}</td>
+                </tr>
+
+                <tr><td colspan="${data.diasDaSemana.length + 2}" style="background:#eee; text-align:left; font-weight:bold; font-size:10px; margin-top: 10px;">(-) SAÍDAS (DESPESAS EXTERNAS E SANGRIA)</td></tr>
+                ${data.categoriasSaida.map(cat => `
+                    <tr>
+                        <td>${cat.nome.toUpperCase()}</td>
+                        ${cat.valores.map(v => `<td class="font-mono">${v !== null ? formatarMoeda(v) : '-'}</td>`).join('')}
+                        <td class="font-mono text-red" style="font-weight:bold;">${formatarMoeda(cat.total)}</td>
+                    </tr>
+                `).join('')}
+                <tr class="row-total">
+                    <td>SUBTOTAL SAÍDAS</td>
+                    ${data.totaisSaidaPorDia.map(v => `<td class="font-mono text-red">${formatarMoeda(v)}</td>`).join('')}
+                    <td class="font-mono text-red">${formatarMoeda(data.totalGeralSaidas)}</td>
+                </tr>
+                
+                <tr><td colspan="${data.diasDaSemana.length + 2}" style="border: 0; padding: 4px;">&nbsp;</td></tr>
+
+                <tr class="row-total" style="background:#ddd;">
+                    <td style="font-size: 11px;">SALDO LIVRE DO DIA</td>
+                    ${data.saldosPorDia.map(v => `<td class="font-mono ${v >= 0 ? 'text-green' : 'text-red'}">${formatarMoeda(v)}</td>`).join('')}
+                    <td class="font-mono ${data.saldoVisaoFinal >= 0 ? 'text-green' : 'text-red'}">${formatarMoeda(data.saldoVisaoFinal)}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">OBSERVAÇÕES DOS DIAS (EVENTOS / FERIADOS)</div>
+        <table>
+            <tbody>
+                ${data.eventosPorDia.map((evt, idx) => `
+                    ${evt ? `<tr><td style="width:20%; font-weight:bold; text-align:left;">${data.diasDaSemana[idx]}</td><td style="text-align:left;">${evt}</td></tr>` : ''}
+                `).join('')}
+                ${!data.eventosPorDia.some(e => e) ? '<tr><td style="text-align:center;">Nenhuma observação registrada na semana.</td></tr>' : ''}
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p>Documento gerado pelo Sistema Ótica Davi - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>
+            <p>Conferido por: __________________________________________________</p>
+        </div>
+    </div>
+    
+    <script>
+        window.onload = function() { window.print(); }
+    </script>
+</body>
+</html>`;
+}
+
+export function imprimirRelatorioFluxoSemanal(data: ReportFluxoSemanalData) {
+    const html = gerarRelatorioFluxoSemanalHTML(data);
+    const windowPrint = window.open('', '_blank');
+    if (windowPrint) {
+        windowPrint.document.write(html);
+        windowPrint.document.close();
+    }
+}

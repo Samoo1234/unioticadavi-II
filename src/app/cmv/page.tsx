@@ -14,6 +14,8 @@ const cmvModules = [
     { name: "EXTRATO DESPESAS", href: "/cmv/extrato-despesas", description: "Relatório de despesas" },
     { name: "CUSTO OS", href: "/cmv/custo-os", description: "Custos por ordem de serviço" },
     { name: "RELATÓRIO OS", href: "/cmv/relatorio-os", description: "Relatório de OS" },
+    { name: "FLUXO DE ENTRADAS", href: "/cmv/fluxo-entradas", description: "Controle diário de receitas" },
+    { name: "CATEGORIAS ENTRADAS", href: "/cmv/categorias-entradas", description: "Categorias para o fluxo" },
 ];
 
 export default function CMVPage() {
