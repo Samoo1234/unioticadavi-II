@@ -9,9 +9,8 @@ export default function FluxoEntradasPage() {
         <MainLayout>
             <div className="h-full flex flex-col">
                 <PageHeader 
-                    module="CMV"
-                    title="FLUXO DE CAIXA - ENTRADAS"
-                    description="Controle diário de receitas e recebimentos integrado com a Stone."
+                    title="FLUXO DE CAIXA (ENTRADAS E SAÍDAS)"
+                    subtitle="Controle diário de movimentação financeira real."
                 />
                 <div className="flex-1 overflow-hidden mt-4">
                     <FluxoEntradasGrid />
