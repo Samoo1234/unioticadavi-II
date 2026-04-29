@@ -114,10 +114,9 @@ function AgendamentoContent() {
                 tipo: a.tipo as any, status: a.status as any
             }));
             setAgenda(adapted);
-            if (view === "financeiro") await fetchFinanceiroData(adapted);
         }
         setCarregando(false);
-    }, [filtroEmpresaId, filtroData, view, fetchFinanceiroData]);
+    }, [filtroEmpresaId, filtroData]);
 
     // Fetch agendamentos
     useEffect(() => {
