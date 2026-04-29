@@ -72,7 +72,7 @@ export default function AgendaCalendar({
 
                             {consulta.status !== "cancelado" && (
                                 <div className="flex flex-wrap gap-2">
-                                    {profile?.roles?.name === 'Administrador' && (
+                                    {(profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
                                         <button
                                             onClick={() => onAbrirFinanceiroIndividual(consulta)}
                                             className="flex-1 py-1.5 text-[10px] font-black bg-blue-600/10 border border-blue-600/30 text-blue-500 hover:bg-blue-600/20"
@@ -139,7 +139,7 @@ export default function AgendaCalendar({
                                 <td className="px-4 py-4">
                                     {consulta.status !== "cancelado" && (
                                         <div className="flex justify-center gap-1.5">
-                                            {profile?.roles?.name === 'Administrador' && (
+                                            {(profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
                                                 <button onClick={() => onAbrirFinanceiroIndividual(consulta)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Financeiro">
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                                 </button>

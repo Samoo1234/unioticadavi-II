@@ -365,7 +365,7 @@ function AgendamentoContent() {
                                 IMPRIMIR AGENDA
                             </button>
                         )}
-                        {view === "agenda" && !mostrarForm && profile?.roles?.name === 'Administrador' && (
+                        {view === "agenda" && !mostrarForm && (profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
                             <button onClick={handleAbrirFinanceiro} className="px-4 py-2 bg-blue-900 border border-blue-700 text-sm font-medium text-white hover:bg-blue-800">
                                 FINANCEIRO DO DIA
                             </button>
