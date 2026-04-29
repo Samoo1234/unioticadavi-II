@@ -15,7 +15,7 @@ export default function LoginPage() {
         const checkSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (session) {
-                router.push("/dashboard");
+                router.push("/agendamento");
             }
         };
         checkSession();
@@ -34,7 +34,7 @@ export default function LoginPage() {
 
             if (authError) throw authError;
 
-            router.push("/dashboard");
+            router.push("/agendamento");
         } catch (err: any) {
             setError(err.message || "Erro ao realizar login");
         } finally {
