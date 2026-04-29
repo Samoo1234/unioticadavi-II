@@ -102,7 +102,9 @@ function AgendamentoContent() {
         setCarregando(true);
         const { data, error } = await supabase
             .from('agendamentos').select('*, pacientes(*)')
-            .eq('empresa_id', filtroEmpresaId).eq('data', filtroData).order('hora');
+            .eq('empresa_id', filtroEmpresaId).eq('data', filtroData)
+            .neq('status', 'cancelado')
+            .order('hora');
 
         if (!error && data) {
             const adapted: Consulta[] = data.map((a: any) => ({
@@ -323,7 +325,9 @@ function AgendamentoContent() {
         try {
             const { data, error } = await supabase
                 .from('agendamentos').select('*, pacientes(nome, telefone)')
-                .eq('empresa_id', filtroEmpresaId).eq('data', filtroData).order('hora');
+                .eq('empresa_id', filtroEmpresaId).eq('data', filtroData)
+                .neq('status', 'cancelado')
+                .order('hora');
 
             if (!error && data) {
                 dadosRelatorio.registros = data.map((item: any) => ({
