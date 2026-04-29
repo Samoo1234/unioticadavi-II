@@ -23,7 +23,83 @@ export default function AgendaFinanceiro({
     financeiroIndividualId,
 }: AgendaFinanceiroProps) {
     return (
-        <>
+        <div className="flex flex-col gap-8">
+            {/* Resumo — apenas na visão financeira do dia (não individual) */}
+            {!financeiroIndividualId && (
+                <div className="space-y-6">
+                    <h2 className="text-lg font-bold text-white uppercase tracking-tight">Resumo</h2>
+                    <div className="grid grid-cols-2 gap-8">
+                        {/* Por Tipo */}
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-bold text-gray-400 uppercase">Por Tipo</h3>
+                            <table className="w-full text-sm text-left border border-gray-800 bg-gray-900/50">
+                                <thead>
+                                    <tr className="border-b border-gray-800 bg-gray-800/30">
+                                        <th className="px-4 py-2 font-medium text-gray-400">Tipo</th>
+                                        <th className="px-4 py-2 font-medium text-gray-400">Quantidade</th>
+                                        <th className="px-4 py-2 font-medium text-gray-400">Total (R$)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {(["Particular", "Convênio", "Campanha", "Exames", "Revisão"] as TipoFinanceiroAgendamento[]).map(t => {
+                                        const filtrados = registrosFin.filter(r => r.tipo === t);
+                                        const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
+                                        return (
+                                            <tr key={t} className="text-gray-300">
+                                                <td className="px-4 py-2 uppercase">{t}</td>
+                                                <td className="px-4 py-2">{filtrados.length}</td>
+                                                <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    <tr className="bg-gray-800/20 font-bold text-white">
+                                        <td className="px-4 py-2">Total</td>
+                                        <td className="px-4 py-2">{registrosFin.length}</td>
+                                        <td className="px-4 py-2">
+                                            {registrosFin.reduce((acc, r) => acc + (r.valorTotal || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Por Forma de Pagamento */}
+                        <div className="space-y-3">
+                            <h3 className="text-sm font-bold text-gray-400 uppercase">Por Forma de Pagamento</h3>
+                            <table className="w-full text-sm text-left border border-gray-800 bg-gray-900/50">
+                                <thead>
+                                    <tr className="border-b border-gray-800 bg-gray-800/30">
+                                        <th className="px-4 py-2 font-medium text-gray-400">Forma de Pagamento</th>
+                                        <th className="px-4 py-2 font-medium text-gray-400">Quantidade</th>
+                                        <th className="px-4 py-2 font-medium text-gray-400">Total (R$)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-800">
+                                    {(["Dinheiro", "Cartão", "PIX"] as FormaPagamento[]).map(f => {
+                                        let count = 0;
+                                        let total = 0;
+                                        registrosFin.forEach(r => {
+                                            const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
+                                            if (pagamentosDessaForma.length > 0) {
+                                                count += pagamentosDessaForma.length;
+                                                total += pagamentosDessaForma.reduce((acc, p) => acc + p.valor, 0);
+                                            }
+                                        });
+                                        return (
+                                            <tr key={f} className="text-gray-300">
+                                                <td className="px-4 py-2 uppercase">{f}</td>
+                                                <td className="px-4 py-2">{count}</td>
+                                                <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Tabela Financeira */}
             <div className="bg-gray-900 border border-gray-800 overflow-x-auto">
                 <table className="w-full min-w-[1200px]">
@@ -147,82 +223,6 @@ export default function AgendaFinanceiro({
                     </tbody>
                 </table>
             </div>
-
-            {/* Resumo — apenas na visão financeira do dia (não individual) */}
-            {!financeiroIndividualId && (
-                <div className="mt-8 space-y-6">
-                    <h2 className="text-lg font-bold text-white uppercase tracking-tight">Resumo</h2>
-                    <div className="grid grid-cols-2 gap-8">
-                        {/* Por Tipo */}
-                        <div className="space-y-3">
-                            <h3 className="text-sm font-bold text-gray-400 uppercase">Por Tipo</h3>
-                            <table className="w-full text-sm text-left border border-gray-800 bg-gray-900/50">
-                                <thead>
-                                    <tr className="border-b border-gray-800 bg-gray-800/30">
-                                        <th className="px-4 py-2 font-medium text-gray-400">Tipo</th>
-                                        <th className="px-4 py-2 font-medium text-gray-400">Quantidade</th>
-                                        <th className="px-4 py-2 font-medium text-gray-400">Total (R$)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-800">
-                                    {(["Particular", "Convênio", "Campanha", "Exames", "Revisão"] as TipoFinanceiroAgendamento[]).map(t => {
-                                        const filtrados = registrosFin.filter(r => r.tipo === t);
-                                        const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
-                                        return (
-                                            <tr key={t} className="text-gray-300">
-                                                <td className="px-4 py-2 uppercase">{t}</td>
-                                                <td className="px-4 py-2">{filtrados.length}</td>
-                                                <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                    <tr className="bg-gray-800/20 font-bold text-white">
-                                        <td className="px-4 py-2">Total</td>
-                                        <td className="px-4 py-2">{registrosFin.length}</td>
-                                        <td className="px-4 py-2">
-                                            {registrosFin.reduce((acc, r) => acc + (r.valorTotal || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Por Forma de Pagamento */}
-                        <div className="space-y-3">
-                            <h3 className="text-sm font-bold text-gray-400 uppercase">Por Forma de Pagamento</h3>
-                            <table className="w-full text-sm text-left border border-gray-800 bg-gray-900/50">
-                                <thead>
-                                    <tr className="border-b border-gray-800 bg-gray-800/30">
-                                        <th className="px-4 py-2 font-medium text-gray-400">Forma de Pagamento</th>
-                                        <th className="px-4 py-2 font-medium text-gray-400">Quantidade</th>
-                                        <th className="px-4 py-2 font-medium text-gray-400">Total (R$)</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-800">
-                                    {(["Dinheiro", "Cartão", "PIX"] as FormaPagamento[]).map(f => {
-                                        let count = 0;
-                                        let total = 0;
-                                        registrosFin.forEach(r => {
-                                            const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
-                                            if (pagamentosDessaForma.length > 0) {
-                                                count += pagamentosDessaForma.length;
-                                                total += pagamentosDessaForma.reduce((acc, p) => acc + p.valor, 0);
-                                            }
-                                        });
-                                        return (
-                                            <tr key={f} className="text-gray-300">
-                                                <td className="px-4 py-2 uppercase">{f}</td>
-                                                <td className="px-4 py-2">{count}</td>
-                                                <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </>
+        </div>
     );
 }
