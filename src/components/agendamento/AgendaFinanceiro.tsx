@@ -41,24 +41,36 @@ export default function AgendaFinanceiro({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-800">
-                                    {(["Particular", "Convênio", "Campanha", "Exames", "Revisão"] as TipoFinanceiroAgendamento[]).map(t => {
-                                        const filtrados = registrosFin.filter(r => r.tipo === t);
-                                        const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
+                                    {(() => {
+                                        const tipos = ["Particular", "Convênio", "Campanha", "Exames", "Revisão"] as TipoFinanceiroAgendamento[];
+                                        let totalQtd = 0;
+                                        let totalValor = 0;
+                                        const rows = tipos.map(t => {
+                                            const filtrados = registrosFin.filter(r => r.tipo === t);
+                                            const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
+                                            totalQtd += filtrados.length;
+                                            totalValor += total;
+                                            return (
+                                                <tr key={t} className="text-gray-300">
+                                                    <td className="px-4 py-2 uppercase">{t}</td>
+                                                    <td className="px-4 py-2">{filtrados.length}</td>
+                                                    <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                                </tr>
+                                            );
+                                        });
                                         return (
-                                            <tr key={t} className="text-gray-300">
-                                                <td className="px-4 py-2 uppercase">{t}</td>
-                                                <td className="px-4 py-2">{filtrados.length}</td>
-                                                <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                                            </tr>
+                                            <>
+                                                {rows}
+                                                <tr className="bg-gray-800/20 font-bold text-white">
+                                                    <td className="px-4 py-2">Total</td>
+                                                    <td className="px-4 py-2">{totalQtd}</td>
+                                                    <td className="px-4 py-2">
+                                                        {totalValor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                </tr>
+                                            </>
                                         );
-                                    })}
-                                    <tr className="bg-gray-800/20 font-bold text-white">
-                                        <td className="px-4 py-2">Total</td>
-                                        <td className="px-4 py-2">{registrosFin.length}</td>
-                                        <td className="px-4 py-2">
-                                            {registrosFin.reduce((acc, r) => acc + (r.valorTotal || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                        </td>
-                                    </tr>
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
