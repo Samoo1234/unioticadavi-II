@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Paciente } from "@/data/mockData";
+import { Paciente } from "@/types";
 
 export function usePacientes() {
     const [listaPacientes, setListaPacientes] = useState<Paciente[]>([]);

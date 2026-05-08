@@ -1,6 +1,6 @@
 "use client";
 
-import { Consulta } from "@/data/mockData";
+import { Consulta } from "@/types";
 import { useAuth } from "@/contexts/AuthContext";
 
 function StatusBadge({ status }: { status: string }) {

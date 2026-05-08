@@ -1,6 +1,6 @@
 "use client";
 
-import { Paciente } from "@/data/mockData";
+import { Paciente } from "@/types";
 
 interface PacienteDetailsProps {
     pacienteSelecionado: Paciente | null;

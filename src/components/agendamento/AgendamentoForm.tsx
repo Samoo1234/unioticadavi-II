@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Consulta } from "@/data/mockData";
+import { Consulta } from "@/types";
 import { ConfiguracaoHorarios } from "@/data/empresasData";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";

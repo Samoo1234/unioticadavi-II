@@ -2,7 +2,7 @@
 
 import MainLayout from "@/components/MainLayout";
 import { supabase } from "@/lib/supabase";
-import { Consulta } from "@/data/mockData";
+import { Consulta } from "@/types";
 import { RegistroFinanceiroAgendamento, TipoFinanceiroAgendamento, PagamentoAgendamento, FormaPagamento } from "@/data/financeiroData";
 import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";

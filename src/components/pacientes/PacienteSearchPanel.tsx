@@ -1,7 +1,7 @@
 "use client";
 
 import { RefObject } from "react";
-import { Paciente } from "@/data/mockData";
+import { Paciente } from "@/types";
 
 interface PacienteSearchPanelProps {
     termoBusca: string;
