@@ -87,7 +87,15 @@ export default function AgendaFinanceiro({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-800">
-                                    {(["Dinheiro", "Cartão", "PIX"] as FormaPagamento[]).map(f => {
+                                    {(["Dinheiro", "PIX", "Cartao Debito", "Cartao Credito", "Boleto", "Outros"] as FormaPagamento[]).map(f => {
+                                        const labelMap: Record<string, string> = {
+                                            "Dinheiro": "Dinheiro",
+                                            "PIX": "PIX",
+                                            "Cartao Debito": "Cartão Débito",
+                                            "Cartao Credito": "Cartão Crédito",
+                                            "Boleto": "Boleto",
+                                            "Outros": "Outros",
+                                        };
                                         let count = 0;
                                         let total = 0;
                                         registrosFin.forEach(r => {
@@ -99,7 +107,7 @@ export default function AgendaFinanceiro({
                                         });
                                         return (
                                             <tr key={f} className="text-gray-300">
-                                                <td className="px-4 py-2 uppercase">{f}</td>
+                                                <td className="px-4 py-2 uppercase">{labelMap[f] || f}</td>
                                                 <td className="px-4 py-2">{count}</td>
                                                 <td className="px-4 py-2">{total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                             </tr>
