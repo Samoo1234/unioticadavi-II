@@ -54,28 +54,25 @@ export default function UsersAdminPage() {
     const fetchData = async () => {
         setLoading(true);
 
-        // Fetch Profiles - now we need valid email, but email is in auth.users not easily accessible by join unless we have a view or function.
-        // For now we just show profiles. The API ensures synchronization.
-        const { data: pData } = await supabase
-            .from('profiles')
-            .select('*, roles(name)')
-            .order('full_name');
+        try {
+            // Use server-side API route that bypasses RLS with service_role key
+            const response = await fetch('/api/admin/users/list');
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('Erro ao carregar usuários:', errorData.error);
+                setLoading(false);
+                return;
+            }
 
-        // Fetch Roles
-        const { data: rData } = await supabase
-            .from('roles')
-            .select('*')
-            .order('name');
+            const { profiles: pData, roles: rData, units: uData } = await response.json();
 
-        // Fetch Units (Empresas)
-        const { data: uData } = await supabase
-            .from('empresas')
-            .select('id, nome_fantasia')
-            .order('nome_fantasia');
-
-        if (pData) setProfiles(pData);
-        if (rData) setRoles(rData);
-        if (uData) setUnits(uData);
+            if (pData) setProfiles(pData);
+            if (rData) setRoles(rData);
+            if (uData) setUnits(uData);
+        } catch (error) {
+            console.error('Erro na requisição:', error);
+        }
 
         setLoading(false);
     };
