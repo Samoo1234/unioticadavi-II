@@ -13,6 +13,7 @@ interface Empresa {
 interface Fornecedor {
     id: number;
     nome: string;
+    tipo_id?: number | null;
 }
 
 interface TipoFornecedor {
@@ -49,6 +50,10 @@ export default function TitulosPage() {
     const [editandoId, setEditandoId] = useState<number | null>(null);
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
 
+    const [isMultiplos, setIsMultiplos] = useState(false);
+    const [quantidadeTitulos, setQuantidadeTitulos] = useState(2);
+    const [parcelas, setParcelas] = useState([{ valor: "", data_vencimento: "" }, { valor: "", data_vencimento: "" }]);
+
     const [filtros, setFiltros] = useState({
         status: "todos",
         empresa_id: "",
@@ -64,6 +69,45 @@ export default function TitulosPage() {
         observacao: "",
     });
 
+    const handleQuantidadeChange = (qtd: number) => {
+        setQuantidadeTitulos(qtd);
+        setParcelas(prev => {
+            const novas = [...prev];
+            if (qtd > novas.length) {
+                for (let i = novas.length; i < qtd; i++) {
+                    novas.push({ valor: "", data_vencimento: "" });
+                }
+            } else if (qtd < novas.length) {
+                novas.length = qtd;
+            }
+            return novas;
+        });
+    };
+
+    const handleParcelaChange = (index: number, campo: "valor" | "data_vencimento", valorStr: string) => {
+        setParcelas(prev => {
+            const novas = [...prev];
+            novas[index][campo] = valorStr;
+
+            if (index === 0) {
+                if (campo === "valor") {
+                    for (let i = 1; i < novas.length; i++) {
+                        if (!novas[i].valor) novas[i].valor = valorStr;
+                    }
+                } else if (campo === "data_vencimento" && valorStr) {
+                    let dataBase = new Date(valorStr + "T00:00:00");
+                    for (let i = 1; i < novas.length; i++) {
+                        if (!novas[i].data_vencimento) {
+                            dataBase.setMonth(dataBase.getMonth() + 1);
+                            novas[i].data_vencimento = dataBase.toISOString().split("T")[0];
+                        }
+                    }
+                }
+            }
+            return novas;
+        });
+    };
+
     useEffect(() => {
         fetchData();
     }, []);
@@ -73,7 +117,7 @@ export default function TitulosPage() {
         const [titRes, empRes, fornRes, tiposRes] = await Promise.all([
             supabase.from("titulos").select("*, fornecedores(id, nome), empresas(id, nome_fantasia, cidade), tipos_fornecedores(id, nome)").order("data_vencimento", { ascending: false }),
             supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
-            supabase.from("fornecedores").select("id, nome").eq("ativo", true).order("nome"),
+            supabase.from("fornecedores").select("id, nome, tipo_id").eq("ativo", true).order("nome"),
             supabase.from("tipos_fornecedores").select("*").order("nome"),
         ]);
 
@@ -102,48 +146,79 @@ export default function TitulosPage() {
     };
 
     const handleSubmit = async () => {
-        if (!form.valor || !form.data_vencimento) {
-            setMensagem({ tipo: "erro", texto: "Valor e Data de Vencimento são obrigatórios" });
-            return;
-        }
+        if (isMultiplos) {
+            if (parcelas.some(p => !p.valor || !p.data_vencimento)) {
+                setMensagem({ tipo: "erro", texto: "Preencha valor e vencimento de todas as parcelas" });
+                return;
+            }
+            const nextNum = await getProximoNumero();
+            
+            const insercoes = parcelas.map((p, i) => ({
+                fornecedor_id: form.fornecedor_id ? parseInt(form.fornecedor_id) : null,
+                empresa_id: form.empresa_id ? parseInt(form.empresa_id) : null,
+                tipo_id: form.tipo_id ? parseInt(form.tipo_id) : null,
+                tipo: form.tipo,
+                valor: parseFloat(p.valor.replace(",", ".")),
+                data_vencimento: p.data_vencimento,
+                observacao: form.observacao ? `${form.observacao} - Parcela ${i + 1}/${quantidadeTitulos}` : `Parcela ${i + 1}/${quantidadeTitulos}`,
+                numero: nextNum + i,
+            }));
 
-        const numero = editandoId ? undefined : await getProximoNumero();
-
-        const dados: any = {
-            fornecedor_id: form.fornecedor_id ? parseInt(form.fornecedor_id) : null,
-            empresa_id: form.empresa_id ? parseInt(form.empresa_id) : null,
-            tipo_id: form.tipo_id ? parseInt(form.tipo_id) : null,
-            tipo: form.tipo,
-            valor: parseFloat(form.valor.replace(",", ".")),
-            data_vencimento: form.data_vencimento,
-            observacao: form.observacao || null,
-        };
-
-        if (numero) dados.numero = numero;
-
-        if (editandoId) {
-            const { error } = await supabase.from("titulos").update(dados).eq("id", editandoId);
+            const { error } = await supabase.from("titulos").insert(insercoes);
             if (error) {
-                setMensagem({ tipo: "erro", texto: "Erro ao atualizar" });
+                setMensagem({ tipo: "erro", texto: "Erro ao adicionar múltiplos títulos" });
             } else {
-                setMensagem({ tipo: "sucesso", texto: "Título atualizado" });
+                setMensagem({ tipo: "sucesso", texto: "Títulos adicionados com sucesso" });
                 resetForm();
                 fetchData();
             }
         } else {
-            const { error } = await supabase.from("titulos").insert(dados);
-            if (error) {
-                setMensagem({ tipo: "erro", texto: "Erro ao adicionar" });
+            if (!form.valor || !form.data_vencimento) {
+                setMensagem({ tipo: "erro", texto: "Valor e Data de Vencimento são obrigatórios" });
+                return;
+            }
+
+            const numero = editandoId ? undefined : await getProximoNumero();
+
+            const dados: any = {
+                fornecedor_id: form.fornecedor_id ? parseInt(form.fornecedor_id) : null,
+                empresa_id: form.empresa_id ? parseInt(form.empresa_id) : null,
+                tipo_id: form.tipo_id ? parseInt(form.tipo_id) : null,
+                tipo: form.tipo,
+                valor: parseFloat(form.valor.replace(",", ".")),
+                data_vencimento: form.data_vencimento,
+                observacao: form.observacao || null,
+            };
+
+            if (numero) dados.numero = numero;
+
+            if (editandoId) {
+                const { error } = await supabase.from("titulos").update(dados).eq("id", editandoId);
+                if (error) {
+                    setMensagem({ tipo: "erro", texto: "Erro ao atualizar" });
+                } else {
+                    setMensagem({ tipo: "sucesso", texto: "Título atualizado" });
+                    resetForm();
+                    fetchData();
+                }
             } else {
-                setMensagem({ tipo: "sucesso", texto: "Título adicionado" });
-                resetForm();
-                fetchData();
+                const { error } = await supabase.from("titulos").insert(dados);
+                if (error) {
+                    setMensagem({ tipo: "erro", texto: "Erro ao adicionar" });
+                } else {
+                    setMensagem({ tipo: "sucesso", texto: "Título adicionado" });
+                    resetForm();
+                    fetchData();
+                }
             }
         }
     };
 
     const resetForm = () => {
         setForm({ fornecedor_id: "", empresa_id: "", tipo_id: "", tipo: "pagar", valor: "", data_vencimento: "", observacao: "" });
+        setIsMultiplos(false);
+        setQuantidadeTitulos(2);
+        setParcelas([{ valor: "", data_vencimento: "" }, { valor: "", data_vencimento: "" }]);
         setEditandoId(null);
         setShowForm(false);
     };
@@ -234,8 +309,32 @@ export default function TitulosPage() {
                 {/* Formulário */}
                 {showForm && (
                     <div className="bg-gray-900 border border-gray-800 p-4 mb-4">
+                        <div className="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
+                            <div className="font-bold text-white">{editandoId ? "EDITAR TÍTULO" : "NOVO TÍTULO"}</div>
+                            {!editandoId && (
+                                <button 
+                                    onClick={() => setIsMultiplos(!isMultiplos)}
+                                    className={`px-4 py-2 text-xs font-medium rounded-sm ${isMultiplos ? "bg-[#0b1b2a] border border-[#102a45] text-white" : "bg-gray-800 border border-gray-700 text-gray-400"}`}
+                                >
+                                    {isMultiplos ? "MÚLTIPLOS TÍTULOS ATIVADO" : "ATIVAR MÚLTIPLOS TÍTULOS"}
+                                </button>
+                            )}
+                        </div>
+
                         <div className="grid grid-cols-4 gap-4 mb-4">
-                            <select value={form.fornecedor_id} onChange={(e) => setForm({ ...form, fornecedor_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
+                            <select 
+                                value={form.fornecedor_id} 
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    const forn = fornecedores.find(f => f.id.toString() === val);
+                                    setForm({ 
+                                        ...form, 
+                                        fornecedor_id: val,
+                                        tipo_id: forn?.tipo_id ? forn.tipo_id.toString() : form.tipo_id
+                                    });
+                                }} 
+                                className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm"
+                            >
                                 <option value="">Fornecedor...</option>
                                 {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                             </select>
@@ -251,10 +350,46 @@ export default function TitulosPage() {
                                 <option value="pagar">A Pagar</option>
                                 <option value="receber">A Receber</option>
                             </select>
-                            <input type="text" placeholder="Valor" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
-                            <input type="date" value={form.data_vencimento} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
-                            <input type="text" placeholder="Observação" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm col-span-2" />
                         </div>
+
+                        <div className="mb-4">
+                            <input type="text" placeholder="Observação Geral (ex: Compra de armações Ray-Ban)" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm w-full" />
+                        </div>
+
+                        {!isMultiplos ? (
+                            <div className="grid grid-cols-4 gap-4 mb-4 border-t border-gray-800 pt-4">
+                                <input type="text" placeholder="Valor" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
+                                <input type="date" value={form.data_vencimento} onChange={(e) => setForm({ ...form, data_vencimento: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
+                            </div>
+                        ) : (
+                            <div className="mb-4 border-t border-gray-800 pt-4">
+                                <div className="mb-4">
+                                    <label className="block text-xs text-gray-500 mb-1">Quantidade de Títulos</label>
+                                    <input type="number" min="2" max="36" value={quantidadeTitulos} onChange={(e) => handleQuantidadeChange(parseInt(e.target.value) || 2)} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm w-32" />
+                                </div>
+                                <div className="bg-gray-800/30 p-4 border border-gray-800 rounded">
+                                    <div className="text-sm font-medium text-white mb-3">Detalhes dos Títulos</div>
+                                    <div className="grid gap-3">
+                                        {parcelas.map((p, index) => (
+                                            <div key={index} className="flex items-center gap-4">
+                                                <div className="text-sm text-gray-400 w-20">Título {index + 1}:</div>
+                                                <div className="flex-1 max-w-xs">
+                                                    <div className="text-xs text-gray-500 mb-1">Data de Vencimento *</div>
+                                                    <input type="date" value={p.data_vencimento} onChange={(e) => handleParcelaChange(index, "data_vencimento", e.target.value)} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark w-full" />
+                                                </div>
+                                                <div className="flex-1 max-w-xs">
+                                                    <div className="text-xs text-gray-500 mb-1">Valor *</div>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-2 text-gray-500 text-sm">R$</span>
+                                                        <input type="text" placeholder="0,00" value={p.valor} onChange={(e) => handleParcelaChange(index, "valor", e.target.value)} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 pl-8 text-sm w-full" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex gap-2">
                             <button onClick={handleSubmit} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-medium">SALVAR</button>
                             <button onClick={resetForm} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 text-sm font-medium">CANCELAR</button>
