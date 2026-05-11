@@ -148,7 +148,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         };
 
-        // Initialize and listen for all auth changes
+        // 1. Forçar checagem imediata da sessão na montagem
+        // Isso previne o "loop infinito" (loading eterno) se o onAuthStateChange falhar
+        // em disparar quando a aba for restaurada com um token expirado.
+        const initSession = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                // Se houver erro de Auth (como Refresh Token expirado), é esperado. Apenas deslogamos.
+                if (error) {
+                    if (error.message.includes('Refresh Token Not Found') || error.message.includes('Invalid Refresh Token')) {
+                        console.log('[Auth] Sessão expirada naturalmente (Refresh Token ausente/inválido).');
+                    } else {
+                        console.warn('[Auth] Aviso ao checar sessão:', error.message);
+                    }
+                }
+                
+                // Se não tiver sessão ou der erro, garantimos a limpeza
+                if (!session && mounted) {
+                    await handleSession(null, 'NO_SESSION_FOUND_ON_INIT');
+                } else if (session && mounted) {
+                    // Evita disparar novamente se o onAuthStateChange já pegou (opcional)
+                    // Mas caso o onAuthStateChange tenha falhado, a gente processa:
+                    await handleSession(session, 'SESSION_RESTORED_ON_INIT');
+                }
+            } catch (err) {
+                console.error('[Auth] Erro inesperado ao checar sessão:', err);
+                if (mounted) await handleSession(null, 'SESSION_CHECK_ERROR');
+            }
+        };
+
+        initSession();
+
+        // 2. Inicializar listener do Supabase
         // onAuthStateChange handles both initial session and subsequent events
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             debugLog('AUTH_STATE', `Estado mudou: ${event}`, { userId: session?.user?.id });
