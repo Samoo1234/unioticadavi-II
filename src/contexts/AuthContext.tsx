@@ -34,8 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
 
     const PUBLIC_PREFIXES = ['/verificar', '/login'];
-    const isPublicRoute = PUBLIC_PREFIXES.some(prefix => pathname?.startsWith(prefix)) ||
-        (typeof window !== 'undefined' && PUBLIC_PREFIXES.some(prefix => window.location.pathname.startsWith(prefix)));
+    const isPublicRoute = React.useMemo(() => {
+        if (!pathname) return false;
+        return PUBLIC_PREFIXES.some(prefix => pathname.startsWith(prefix));
+    }, [pathname]);
 
     const lastProfileUserId = React.useRef<string | null>(null);
     const fetchingForUserId = React.useRef<string | null>(null);
@@ -148,44 +150,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         };
 
-        // 1. Forçar checagem imediata da sessão na montagem
-        // Isso previne o "loop infinito" (loading eterno) se o onAuthStateChange falhar
-        // em disparar quando a aba for restaurada com um token expirado.
-        const initSession = async () => {
-            try {
-                const { data: { session }, error } = await supabase.auth.getSession();
-                
-                // Se houver erro de Auth (como Refresh Token expirado), é esperado. Apenas deslogamos.
-                if (error) {
-                    if (error.message.includes('Refresh Token Not Found') || error.message.includes('Invalid Refresh Token')) {
-                        console.log('[Auth] Sessão expirada naturalmente (Refresh Token ausente/inválido).');
-                    } else {
-                        console.warn('[Auth] Aviso ao checar sessão:', error.message);
-                    }
-                }
-                
-                // Se não tiver sessão ou der erro, garantimos a limpeza
-                if (!session && mounted) {
-                    await handleSession(null, 'NO_SESSION_FOUND_ON_INIT');
-                } else if (session && mounted) {
-                    // Evita disparar novamente se o onAuthStateChange já pegou (opcional)
-                    // Mas caso o onAuthStateChange tenha falhado, a gente processa:
-                    await handleSession(session, 'SESSION_RESTORED_ON_INIT');
-                }
-            } catch (err) {
-                console.error('[Auth] Erro inesperado ao checar sessão:', err);
-                if (mounted) await handleSession(null, 'SESSION_CHECK_ERROR');
-            }
-        };
-
-        initSession();
-
-        // 2. Inicializar listener do Supabase
+        // 1. Inicializar listener do Supabase
         // onAuthStateChange handles both initial session and subsequent events
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             debugLog('AUTH_STATE', `Estado mudou: ${event}`, { userId: session?.user?.id });
             await handleSession(session, event);
         });
+
+        // 2. Forçar checagem manual apenas como fallback ou para garantir sincronia inicial
+        const initSession = async () => {
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                if (error) {
+                    console.warn('[Auth] Erro ao checar sessão inicial:', error.message);
+                }
+                
+                // Se o onAuthStateChange ainda não processou nada, a gente processa aqui
+                if (mounted && !lastProfileUserId.current && !fetchingForUserId.current) {
+                    await handleSession(session, 'INITIAL_CHECK');
+                }
+            } catch (err) {
+                console.error('[Auth] Erro inesperado no initSession:', err);
+                if (mounted) setLoading(false);
+            }
+        };
+
+        initSession();
 
         return () => {
             mounted = false;
@@ -195,10 +186,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // 3. Route Protection (Runs on changes)
     useEffect(() => {
-        if (!loading && !user && !isPublicRoute) {
+        // Ignorar se ainda estiver carregando ou se o pathname ainda não foi resolvido (evita loops na hidratação)
+        if (loading || pathname === null) return;
+
+        // Se não houver usuário e não for rota pública, redirecionar para login
+        if (!user && !isPublicRoute) {
+            console.log('[Auth] Proteção: Redirecionando para /login (não autenticado)');
             router.push('/login');
         }
-    }, [user, loading, isPublicRoute, router]);
+        
+        // Se houver usuário e estiver na página de login, redirecionar para agendamento
+        // Isso centraliza o redirecionamento pós-login e evita o loop reverso
+        if (user && pathname === '/login') {
+            console.log('[Auth] Proteção: Redirecionando para /agendamento (já autenticado)');
+            router.push('/agendamento');
+        }
+    }, [user, loading, isPublicRoute, router, pathname]);
 
     const hasPermission = (module: string, action: string) => {
         if (roleName === 'Administrador') return true;
