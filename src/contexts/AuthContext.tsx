@@ -59,6 +59,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
             console.log(`[Auth] Buscando perfil para: ${userId}`);
+            
+            // Query mais simples e robusta para evitar problemas com joins complexos em produção
             const { data, error } = await supabase
                 .from('profiles')
                 .select(`
@@ -74,50 +76,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     )
                 `)
                 .eq('id', userId)
-                .single();
+                .maybeSingle(); // Usar maybeSingle em vez de single para evitar erro se não existir
 
             if (error) {
-                debugError('AUTH_PROFILE', 'Erro ao carregar perfil, usando fallback local', error);
-                // Keep existing profile if it's a transient error, 
-                // but if we have NO profile, we must indicate loading is done
-                if (!profile) {
-                    setProfile(null);
-                    setPermissions([]);
-                    setRoleName(null);
-                }
+                console.error('[Auth] Erro ao buscar perfil:', error.message);
                 throw error;
             }
 
-            if (data) {
-                console.log('[Auth] Perfil carregado com sucesso');
-                lastProfileUserId.current = userId;
-                setProfile(data);
-                const r = data.roles as any;
-                if (r) {
-                    setRoleName(r.name);
-                    const pList = r.role_permissions.map((rp: any) => ({
-                        module: rp.permissions.module,
-                        action: rp.permissions.action
-                    }));
+            if (!data) {
+                console.warn('[Auth] Perfil não encontrado para o usuário:', userId);
+                setProfile(null);
+                setPermissions([]);
+                setRoleName(null);
+                return;
+            }
+
+            console.log('[Auth] Perfil carregado com sucesso');
+            lastProfileUserId.current = userId;
+            setProfile(data);
+            
+            const r = data.roles as any;
+            if (r) {
+                setRoleName(r.name);
+                if (r.role_permissions) {
+                    const pList = r.role_permissions
+                        .filter((rp: any) => rp.permissions)
+                        .map((rp: any) => ({
+                            module: rp.permissions.module,
+                            action: rp.permissions.action
+                        }));
                     setPermissions(pList);
+                }
 
-                    if (r.name === 'Médico') {
-                        const { data: medicoData } = await supabase
-                            .from('medicos')
-                            .select('id')
-                            .eq('user_id', userId)
-                            .eq('ativo', true)
-                            .maybeSingle();
+                if (r.name === 'Médico') {
+                    const { data: medicoData } = await supabase
+                        .from('medicos')
+                        .select('id')
+                        .eq('user_id', userId)
+                        .eq('ativo', true)
+                        .maybeSingle();
 
-                        if (medicoData) {
-                            setMedicoId(medicoData.id);
-                        }
+                    if (medicoData) {
+                        setMedicoId(medicoData.id);
                     }
                 }
             }
-        } catch (err) {
-            console.error('[Auth] Erro fatal no fetchProfileData:', err);
+        } catch (err: any) {
+            console.error('[Auth] Erro fatal no fetchProfileData:', err.message || err);
         } finally {
+            console.log('[Auth] Finalizando carregamento do perfil');
             fetchingForUserId.current = null;
             setLoading(false);
         }
@@ -150,23 +157,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
         };
 
-        // 1. Inicializar listener do Supabase
-        // onAuthStateChange handles both initial session and subsequent events
+        // 1. Safety Timeout: Se em 8 segundos não carregar nada, libera o loading
+        // Isso evita que o usuário fique preso no spinner se alguma query travar em produção
+        const timeoutId = setTimeout(() => {
+            if (mounted && loading) {
+                console.warn('[Auth] Timeout de segurança atingido. Liberando interface.');
+                setLoading(false);
+            }
+        }, 8000);
+
+        // 2. Inicializar listener do Supabase
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             debugLog('AUTH_STATE', `Estado mudou: ${event}`, { userId: session?.user?.id });
             await handleSession(session, event);
         });
 
-        // 2. Forçar checagem manual apenas como fallback ou para garantir sincronia inicial
+        // 3. Forçar checagem manual apenas como fallback
         const initSession = async () => {
             try {
                 const { data: { session }, error } = await supabase.auth.getSession();
+                if (error) console.warn('[Auth] Erro ao checar sessão inicial:', error.message);
                 
-                if (error) {
-                    console.warn('[Auth] Erro ao checar sessão inicial:', error.message);
-                }
-                
-                // Se o onAuthStateChange ainda não processou nada, a gente processa aqui
                 if (mounted && !lastProfileUserId.current && !fetchingForUserId.current) {
                     await handleSession(session, 'INITIAL_CHECK');
                 }
@@ -180,6 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         return () => {
             mounted = false;
+            clearTimeout(timeoutId);
             subscription.unsubscribe();
         };
     }, []);
