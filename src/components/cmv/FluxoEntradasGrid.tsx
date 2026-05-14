@@ -373,7 +373,7 @@ export default function FluxoEntradasGrid() {
                         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             
                             {/* Anotações do Dia */}
-                            <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-800 rounded-lg p-4 flex items-center gap-4 shadow-lg focus-within:border-gray-600 transition-colors">
+                            <div className="bg-linear-to-r from-gray-900 to-gray-800 border border-gray-800 rounded-lg p-4 flex items-center gap-4 shadow-lg focus-within:border-gray-600 transition-colors">
                                 <div className="text-gray-500 flex flex-col justify-center items-center w-12 shrink-0">
                                     <svg className="w-6 h-6 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                                 </div>
@@ -393,7 +393,7 @@ export default function FluxoEntradasGrid() {
                                 
                                 {/* Coluna ENTRADAS */}
                                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl">
-                                    <div className="bg-gradient-to-r from-green-900/20 to-transparent p-5 border-b border-gray-800 flex justify-between items-end">
+                                    <div className="bg-linear-to-r from-green-900/20 to-transparent p-5 border-b border-gray-800 flex justify-between items-end">
                                         <div>
                                             <h2 className="text-green-500 font-bold tracking-widest text-xs uppercase mb-1">Entradas Registradas</h2>
                                             <p className="text-gray-400 text-sm">Receitas recebidas no dia</p>
@@ -432,7 +432,7 @@ export default function FluxoEntradasGrid() {
 
                                 {/* Coluna SAÍDAS */}
                                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl">
-                                    <div className="bg-gradient-to-r from-red-900/20 to-transparent p-5 border-b border-gray-800 flex justify-between items-end">
+                                    <div className="bg-linear-to-r from-red-900/20 to-transparent p-5 border-b border-gray-800 flex justify-between items-end">
                                         <div>
                                             <h2 className="text-red-500 font-bold tracking-widest text-xs uppercase mb-1">Saídas e Retiradas</h2>
                                             <p className="text-gray-400 text-sm">Pagamentos realizados no dia</p>
@@ -471,8 +471,8 @@ export default function FluxoEntradasGrid() {
                             </div>
 
                             {/* SALDO REAL DO DIA SELECIONADO */}
-                            <div className="bg-gradient-to-b from-gray-900 to-black border border-gray-800 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row justify-between items-center shadow-2xl relative overflow-hidden mt-4">
-                                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl rounded-full -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
+                            <div className="bg-linear-to-b from-gray-900 to-black border border-gray-800 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row justify-between items-center shadow-2xl relative overflow-hidden mt-4">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
                                 <div className="z-10 text-center md:text-left mb-4 md:mb-0">
                                     <p className="text-gray-400 text-sm font-medium tracking-wide uppercase mb-1">Fechamento do Dia</p>
                                     <h3 className="text-2xl text-white font-bold">Saldo Líquido Real</h3>
