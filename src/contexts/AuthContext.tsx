@@ -51,76 +51,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         fetchingForUserId.current = userId;
 
         try {
-            console.log(`[Auth] Buscando perfil simplificado para: ${userId}`);
+            console.log(`[Auth] Buscando perfil via API Interna para: ${userId}`);
             
-            // 1. Buscar apenas os dados básicos do perfil primeiro
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', userId)
-                .maybeSingle();
-
-            if (profileError) {
-                console.error('[Auth] Erro ao buscar perfil básico:', profileError.message);
-                throw profileError;
+            // Usamos a API interna que utiliza service_role para evitar travamentos de RLS ou conexão no cliente
+            const response = await fetch(`/api/auth/profile?userId=${userId}`);
+            
+            if (!response.ok) {
+                throw new Error(`Erro na API de perfil: ${response.statusText}`);
             }
 
-            if (!profileData) {
-                console.warn('[Auth] Perfil não encontrado no banco.');
+            const data = await response.json();
+
+            if (!data) {
+                console.warn('[Auth] Perfil não encontrado na API.');
                 setLoading(false);
                 return;
             }
 
-            console.log('[Auth] Perfil básico carregado, buscando permissões...');
-            setProfile(profileData);
+            console.log('[Auth] Perfil carregado com sucesso via API');
+            setProfile(data);
             lastProfileUserId.current = userId;
 
-            // 2. Buscar dados da Role e Permissões separadamente para evitar travamentos de join
-            // Tenta buscar via join simples ou consulta separada
-            const { data: roleData, error: roleError } = await supabase
-                .from('roles')
-                .select(`
-                    name,
-                    role_permissions (
-                        permissions (
-                            module,
-                            action
-                        )
-                    )
-                `)
-                .eq('id', profileData.role_id) // Assume que existe role_id no perfil
-                .maybeSingle();
-
-            if (roleError) {
-                console.warn('[Auth] Erro ao buscar roles/permissões (ignorado):', roleError.message);
-            } else if (roleData) {
-                setRoleName(roleData.name);
-                if (roleData.role_permissions) {
-                    const pList = (roleData.role_permissions as any[])
-                        .filter(rp => rp.permissions)
-                        .map(rp => ({
+            const r = data.roles as any;
+            if (r) {
+                setRoleName(r.name);
+                if (r.role_permissions) {
+                    const pList = r.role_permissions
+                        .filter((rp: any) => rp.permissions)
+                        .map((rp: any) => ({
                             module: rp.permissions.module,
                             action: rp.permissions.action
                         }));
                     setPermissions(pList);
+
+                    if (r.name === 'Médico') {
+                        // O ID do médico ainda buscamos via cliente, pois é uma tabela simples sem muitos joins
+                        const { data: medicoData } = await supabase
+                            .from('medicos')
+                            .select('id')
+                            .eq('user_id', userId)
+                            .eq('ativo', true)
+                            .maybeSingle();
+
+                        if (medicoData) {
+                            setMedicoId(medicoData.id);
+                        }
+                    }
                 }
             }
 
-            // 3. Buscar Médico ID se necessário
-            if (roleData?.name === 'Médico' || profileData.role === 'doctor') {
-                const { data: medicoData } = await supabase
-                    .from('medicos')
-                    .select('id')
-                    .eq('user_id', userId)
-                    .eq('ativo', true)
-                    .maybeSingle();
-
-                if (medicoData) setMedicoId(medicoData.id);
-            }
-
-            console.log('[Auth] Processo de carregamento completo');
+            console.log('[Auth] Carregamento completo');
         } catch (err: any) {
             console.error('[Auth] Erro no fetchProfileData:', err.message || err);
+            // Se a API falhar, não travamos o loading para permitir que o timer de segurança libere a interface
         } finally {
             fetchingForUserId.current = null;
             setLoading(false);
