@@ -43,80 +43,84 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const fetchingForUserId = React.useRef<string | null>(null);
 
     const fetchProfileData = async (userId: string) => {
-        // Avoid redundant fetches:
-        // 1. If profile for this user is already fully loaded (ref-based, not state-based)
         if (lastProfileUserId.current === userId) {
-            console.log('[Auth] Perfil já carregado para este usuário, ignorando fetch duplicado');
             setLoading(false);
             return;
         }
-        // 2. If a fetch for this exact user is already in flight
-        if (fetchingForUserId.current === userId) {
-            console.log('[Auth] Fetch já em andamento para este usuário, ignorando');
-            return;
-        }
+        if (fetchingForUserId.current === userId) return;
         fetchingForUserId.current = userId;
 
         try {
-            console.log(`[Auth] Buscando perfil para: ${userId}`);
-            const { data, error } = await supabase
+            console.log(`[Auth] Buscando perfil simplificado para: ${userId}`);
+            
+            // 1. Buscar apenas os dados básicos do perfil primeiro
+            const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
+                .select('*')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (profileError) {
+                console.error('[Auth] Erro ao buscar perfil básico:', profileError.message);
+                throw profileError;
+            }
+
+            if (!profileData) {
+                console.warn('[Auth] Perfil não encontrado no banco.');
+                setLoading(false);
+                return;
+            }
+
+            console.log('[Auth] Perfil básico carregado, buscando permissões...');
+            setProfile(profileData);
+            lastProfileUserId.current = userId;
+
+            // 2. Buscar dados da Role e Permissões separadamente para evitar travamentos de join
+            // Tenta buscar via join simples ou consulta separada
+            const { data: roleData, error: roleError } = await supabase
+                .from('roles')
                 .select(`
-                    *,
-                    roles (
-                        name,
-                        role_permissions (
-                            permissions (
-                                module,
-                                action
-                            )
+                    name,
+                    role_permissions (
+                        permissions (
+                            module,
+                            action
                         )
                     )
                 `)
-                .eq('id', userId)
-                .single();
+                .eq('id', profileData.role_id) // Assume que existe role_id no perfil
+                .maybeSingle();
 
-            if (error) {
-                debugError('AUTH_PROFILE', 'Erro ao carregar perfil, usando fallback local', error);
-                // Keep existing profile if it's a transient error, 
-                // but if we have NO profile, we must indicate loading is done
-                if (!profile) {
-                    setProfile(null);
-                    setPermissions([]);
-                    setRoleName(null);
-                }
-                throw error;
-            }
-
-            if (data) {
-                console.log('[Auth] Perfil carregado com sucesso');
-                lastProfileUserId.current = userId;
-                setProfile(data);
-                const r = data.roles as any;
-                if (r) {
-                    setRoleName(r.name);
-                    const pList = r.role_permissions.map((rp: any) => ({
-                        module: rp.permissions.module,
-                        action: rp.permissions.action
-                    }));
+            if (roleError) {
+                console.warn('[Auth] Erro ao buscar roles/permissões (ignorado):', roleError.message);
+            } else if (roleData) {
+                setRoleName(roleData.name);
+                if (roleData.role_permissions) {
+                    const pList = (roleData.role_permissions as any[])
+                        .filter(rp => rp.permissions)
+                        .map(rp => ({
+                            module: rp.permissions.module,
+                            action: rp.permissions.action
+                        }));
                     setPermissions(pList);
-
-                    if (r.name === 'Médico') {
-                        const { data: medicoData } = await supabase
-                            .from('medicos')
-                            .select('id')
-                            .eq('user_id', userId)
-                            .eq('ativo', true)
-                            .maybeSingle();
-
-                        if (medicoData) {
-                            setMedicoId(medicoData.id);
-                        }
-                    }
                 }
             }
-        } catch (err) {
-            console.error('[Auth] Erro fatal no fetchProfileData:', err);
+
+            // 3. Buscar Médico ID se necessário
+            if (roleData?.name === 'Médico' || profileData.role === 'doctor') {
+                const { data: medicoData } = await supabase
+                    .from('medicos')
+                    .select('id')
+                    .eq('user_id', userId)
+                    .eq('ativo', true)
+                    .maybeSingle();
+
+                if (medicoData) setMedicoId(medicoData.id);
+            }
+
+            console.log('[Auth] Processo de carregamento completo');
+        } catch (err: any) {
+            console.error('[Auth] Erro no fetchProfileData:', err.message || err);
         } finally {
             fetchingForUserId.current = null;
             setLoading(false);
