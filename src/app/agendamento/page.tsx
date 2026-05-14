@@ -49,7 +49,15 @@ function AgendamentoContent() {
     const [filtroData, setFiltroData] = useState<string>(new Date().toISOString().split("T")[0]);
 
     useEffect(() => {
-        if (profile?.unit_id) setFiltroEmpresaId(profile.unit_id);
+        if (profile?.unit_id) {
+            setFiltroEmpresaId(profile.unit_id);
+        } else {
+            // Se não tiver unidade fixa, tenta recuperar a última selecionada do localStorage
+            const savedUnit = localStorage.getItem('last_selected_unit');
+            if (savedUnit) {
+                setFiltroEmpresaId(Number(savedUnit));
+            }
+        }
     }, [profile]);
 
     const fetchEmpresas = useCallback(async () => {
@@ -63,9 +71,7 @@ function AgendamentoContent() {
                 ativo: e.ativo
             }));
             setListaEmpresas(adapted);
-            if (adapted.length > 0 && filtroEmpresaId === 0) {
-                setFiltroEmpresaId(adapted[0].id);
-            }
+            // Removido o override automático da primeira unidade para respeitar a persistência e o "Todas as unidades"
         } else {
             setMensagem({ tipo: 'erro', texto: `Erro ao buscar empresas: ${JSON.stringify(error)}` });
         }
@@ -434,7 +440,13 @@ function AgendamentoContent() {
                             <select
                                 value={filtroEmpresaId}
                                 disabled={!!profile?.unit_id}
-                                onChange={(e) => setFiltroEmpresaId(Number(e.target.value))}
+                                onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    setFiltroEmpresaId(val);
+                                    if (!profile?.unit_id) {
+                                        localStorage.setItem('last_selected_unit', val.toString());
+                                    }
+                                }}
                                 className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${profile?.unit_id ? 'opacity-70 cursor-not-allowed' : ''}`}
                             >
                                 {!profile?.unit_id && <option value={0}>Todas as unidades</option>}
