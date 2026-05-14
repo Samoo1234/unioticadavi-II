@@ -14,15 +14,7 @@ export default function LoginPage() {
     const [showLogin, setShowLogin] = useState(false);
     const router = useRouter();
 
-    useEffect(() => {
-        const checkSession = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session) {
-                router.push("/agendamento");
-            }
-        };
-        checkSession();
-    }, [router]);
+    // Redirect logic handled by AuthContext
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();

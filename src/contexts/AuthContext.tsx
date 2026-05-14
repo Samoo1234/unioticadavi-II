@@ -33,9 +33,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const pathname = usePathname();
 
-    const PUBLIC_PREFIXES = ['/verificar', '/login'];
-    const isPublicRoute = PUBLIC_PREFIXES.some(prefix => pathname?.startsWith(prefix)) ||
-        (typeof window !== 'undefined' && PUBLIC_PREFIXES.some(prefix => window.location.pathname.startsWith(prefix)));
+    const isPublicRoute = React.useMemo(() => {
+        if (!pathname) return false;
+        const PUBLIC_PREFIXES = ['/verificar', '/login'];
+        return PUBLIC_PREFIXES.some(prefix => pathname.startsWith(prefix));
+    }, [pathname]);
 
     const lastProfileUserId = React.useRef<string | null>(null);
     const fetchingForUserId = React.useRef<string | null>(null);
@@ -125,6 +127,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         let mounted = true;
 
+        // Fallback de 4 segundos: garante que o loading termine mesmo que o Supabase demore a responder
+        // Isso evita que o usuário fique preso no spinner, mas dá tempo para a sessão ser recuperada.
+        const fallbackTimer = setTimeout(() => {
+            if (mounted) setLoading(false);
+        }, 4000);
+
         const handleSession = async (session: any, eventName = 'NONE') => {
             if (!mounted) return;
 
@@ -189,16 +197,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         return () => {
             mounted = false;
+            clearTimeout(fallbackTimer);
             subscription.unsubscribe();
         };
     }, []);
 
-    // 3. Route Protection (Runs on changes)
+    // 3. Route Protection (Surgical Fix)
     useEffect(() => {
-        if (!loading && !user && !isPublicRoute) {
+        // Ignorar se ainda estiver carregando ou se o pathname não foi resolvido
+        if (loading || !pathname) return;
+
+        const isAtLogin = pathname === '/login';
+
+        if (!user && !isPublicRoute) {
+            console.log('[Auth] Proteção: Redirecionando para login');
             router.push('/login');
+        } else if (user && isAtLogin) {
+            console.log('[Auth] Proteção: Redirecionando para agendamento (já autenticado)');
+            router.push('/agendamento');
         }
-    }, [user, loading, isPublicRoute, router]);
+    }, [user, loading, isPublicRoute, router, pathname]);
 
     const hasPermission = (module: string, action: string) => {
         if (roleName === 'Administrador') return true;
