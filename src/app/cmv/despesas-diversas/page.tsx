@@ -54,7 +54,7 @@ export default function DespesasDiversasPage() {
         descricao: "",
         valor: "",
         data: new Date().toISOString().split("T")[0],
-        forma_pagamento: "",
+        forma_pagamento: "dinheiro",
         observacao: "",
     });
 
@@ -90,8 +90,8 @@ export default function DespesasDiversasPage() {
     };
 
     const handleSubmit = async () => {
-        if (!form.valor || !form.nome) {
-            setMensagem({ tipo: "erro", texto: "Nome e Valor são obrigatórios" });
+        if (!form.valor || !form.forma_pagamento || !form.empresa_id || !form.categoria_id) {
+            setMensagem({ tipo: "erro", texto: "Valor, Forma de Pagamento, Empresa e Categoria são obrigatórios" });
             return;
         }
 
@@ -130,7 +130,7 @@ export default function DespesasDiversasPage() {
     };
 
     const resetForm = () => {
-        setForm({ empresa_id: "", categoria_id: "", nome: "", descricao: "", valor: "", data: new Date().toISOString().split("T")[0], forma_pagamento: "", observacao: "" });
+        setForm({ empresa_id: "", categoria_id: "", nome: "", descricao: "", valor: "", data: new Date().toISOString().split("T")[0], forma_pagamento: "dinheiro", observacao: "" });
         setEditandoId(null);
         setShowForm(false);
     };
@@ -207,19 +207,18 @@ export default function DespesasDiversasPage() {
                 {showForm && (
                     <div className="bg-gray-900 border border-gray-800 p-4 mb-4">
                         <div className="grid grid-cols-4 gap-4 mb-4">
-                            <input type="text" placeholder="Nome/Descrição *" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
+                            <input type="text" placeholder="Nome/Descrição" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
                             <input type="text" placeholder="Valor *" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
                             <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
                             <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
-                                <option value="">Empresa...</option>
+                                <option value="">Empresa *</option>
                                 {empresas.map(e => <option key={e.id} value={e.id}>{e.nome_fantasia}{e.cidade ? ` - ${e.cidade}` : ''}</option>)}
                             </select>
                             <select value={form.categoria_id} onChange={(e) => setForm({ ...form, categoria_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
-                                <option value="">Categoria...</option>
+                                <option value="">Categoria *</option>
                                 {categorias.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                             </select>
                             <select value={form.forma_pagamento} onChange={(e) => setForm({ ...form, forma_pagamento: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
-                                <option value="">Forma Pagamento...</option>
                                 <option value="dinheiro">Dinheiro</option>
                                 <option value="pix">PIX</option>
                                 <option value="cartao_debito">Cartão Débito</option>
