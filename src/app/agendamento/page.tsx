@@ -69,7 +69,8 @@ function AgendamentoContent() {
                 nomeFantasia: e.nome_fantasia,
                 cidade: e.cidade,
                 configuracaoHorarios: e.configuracao_horarios,
-                ativo: e.ativo
+                ativo: e.ativo,
+                cnpj: e.cnpj
             }));
             setListaEmpresas(adapted);
             // Removido o override automático da primeira unidade para respeitar a persistência e o "Todas as unidades"
@@ -157,7 +158,16 @@ function AgendamentoContent() {
     }, [filtroEmpresaId, filtroData, fetchAgendamentos]);
 
     // Derived data
-    const unidades = useMemo(() => listaEmpresas.filter(e => e.ativo).map(e => ({
+    const unidades = useMemo(() => listaEmpresas.filter(e => 
+        e.ativo && 
+        e.cnpj && 
+        e.cnpj.trim() !== '' && 
+        e.cnpj !== '11.111.111/0001-01' && 
+        e.cnpj !== '11.111.111/00001.01' &&
+        e.cidade && 
+        e.cidade.trim() !== '' &&
+        !e.nomeFantasia.toLowerCase().includes('depósito')
+    ).map(e => ({
         id: e.id, label: `${e.nomeFantasia} - ${e.cidade}`,
         temHorarios: !!e.configuracaoHorarios?.diasDisponiveis?.length
     })), [listaEmpresas]);

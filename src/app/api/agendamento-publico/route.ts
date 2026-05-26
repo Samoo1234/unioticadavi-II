@@ -34,10 +34,10 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ horariosOcupados })
     }
 
-    // Otherwise return active companies with schedule config
+    // Otherwise return active companies with schedule config and CNPJ
     const { data: empresas, error } = await supabase
         .from('empresas')
-        .select('id, nome_fantasia, cidade, configuracao_horarios, telefone')
+        .select('id, nome_fantasia, cidade, configuracao_horarios, telefone, cnpj')
         .eq('ativo', true)
         .order('nome_fantasia')
 
@@ -45,7 +45,18 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Erro ao buscar unidades' }, { status: 500 })
     }
 
-    return NextResponse.json({ empresas })
+    // Filter to only include active branches with a valid registered CNPJ and address
+    const empresasFiltradas = (empresas || []).filter(e => 
+        e.cnpj && 
+        e.cnpj.trim() !== '' && 
+        e.cnpj !== '11.111.111/0001-01' && 
+        e.cnpj !== '11.111.111/00001.01' &&
+        e.cidade && 
+        e.cidade.trim() !== '' &&
+        !e.nome_fantasia.toLowerCase().includes('depósito')
+    )
+
+    return NextResponse.json({ empresas: empresasFiltradas })
 }
 
 // POST — Create public appointment
@@ -173,7 +184,7 @@ export async function POST(request: NextRequest) {
             } else {
                 // WhatsApp Template Formatting
                 const dataFormatadaMsg = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR')
-                const whatsappMsg = `*ÓTICA VISION - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${nomeTrimmed}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${(examesSelecionados || []).map((ex: string) => `• _${ex}_`).join('\n')}\n\n📅 *Data:* ${dataFormatadaMsg}\n⏰ *Horário:* ${horario}\n💰 *Valor Total:* R$ ${(valorTotalExames || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`
+                const whatsappMsg = `*ÓTICA DAVI - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${nomeTrimmed}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${(examesSelecionados || []).map((ex: string) => `• _${ex}_`).join('\n')}\n\n📅 *Data:* ${dataFormatadaMsg}\n⏰ *Horário:* ${horario}\n💰 *Valor Total:* R$ ${(valorTotalExames || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`
                 console.log("================ TELEMETRIA WHATSAPP (PUBLIC) ================\n", whatsappMsg, "\n==============================================================")
             }
         }

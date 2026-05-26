@@ -344,7 +344,7 @@ export function gerarRelatorioAgendamentoCompletoHTML(data: ReportAgendamentoDat
 <body>
     <div class="report-container">
         <div class="header">
-            <h1>ÓTICA VISION</h1>
+            <h1>ÓTICA DAVI</h1>
             <h2>RESUMO DE AGENDAMENTO FINANCEIRO</h2>
             <p>${data.unidade} - ${data.data}</p>
         </div>

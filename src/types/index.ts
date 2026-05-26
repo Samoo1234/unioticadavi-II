@@ -1,4 +1,4 @@
-// Tipos do sistema Ótica Vision
+// Tipos do sistema Ótica Davi
 // Migrados de @/data/mockData.ts para local definitivo
 
 export interface Paciente {

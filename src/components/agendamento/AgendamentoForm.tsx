@@ -291,7 +291,16 @@ export default function AgendamentoForm({
 
     const unidades = useMemo(() => {
         return empresas
-            .filter((e) => e.ativo)
+            .filter((e) => 
+                e.ativo && 
+                e.cnpj && 
+                e.cnpj.trim() !== '' && 
+                e.cnpj !== '11.111.111/0001-01' && 
+                e.cnpj !== '11.111.111/00001.01' &&
+                e.cidade && 
+                e.cidade.trim() !== '' &&
+                !e.nomeFantasia.toLowerCase().includes('depósito')
+            )
             .map((e) => ({
                 id: e.id,
                 label: `${e.nomeFantasia} - ${e.cidade}`,
@@ -407,7 +416,7 @@ export default function AgendamentoForm({
 
                 // Template e Log do Envio do WhatsApp
                 const dataFormatada = new Date(formData.data + "T12:00:00").toLocaleDateString('pt-BR');
-                const whatsappMsg = `*ÓTICA VISION - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${formData.pacienteNome}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${formData.examesSelecionados.map(ex => `• _${ex}_`).join("\n")}\n\n📅 *Data:* ${dataFormatada}\n⏰ *Horário:* ${formData.horario}\n💰 *Valor Total:* R$ ${formData.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`;
+                const whatsappMsg = `*ÓTICA DAVI - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${formData.pacienteNome}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${formData.examesSelecionados.map(ex => `• _${ex}_`).join("\n")}\n\n📅 *Data:* ${dataFormatada}\n⏰ *Horário:* ${formData.horario}\n💰 *Valor Total:* R$ ${formData.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`;
                 console.log("================ TELEMETRIA WHATSAPP ================\n", whatsappMsg, "\n=====================================================");
             }
 
