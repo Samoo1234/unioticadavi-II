@@ -316,7 +316,7 @@ export default function AgendamentoPublico() {
 
             {/* Unidade */}
             <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase mb-1.5 block tracking-wider flex justify-between items-center">
+                <label className="text-[10px] font-bold text-gray-400 uppercase mb-1.5 flex justify-between items-center tracking-wider">
                     <span>Unidade <span className="text-red-500">*</span></span>
                     {form.tipo === "Exame" && (
                         <span className="text-[9px] text-yellow-500 font-bold uppercase tracking-wider animate-pulse">
@@ -455,7 +455,7 @@ export default function AgendamentoPublico() {
                                         className="mt-0.5 rounded border-gray-800 text-emerald-600 focus:ring-emerald-500/20 bg-gray-950"
                                     />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider leading-tight break-words">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider leading-tight wrap-break-word">
                                             {ex.nome}
                                         </span>
                                         <span className="text-[9px] font-mono text-emerald-400 mt-1 font-bold">

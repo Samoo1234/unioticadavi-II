@@ -603,7 +603,7 @@ export default function AgendamentoForm({
                                         className="mt-0.5 rounded border-gray-700 text-green-600 focus:ring-green-500/30 bg-gray-900"
                                     />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="text-xs font-bold uppercase tracking-wide leading-tight break-words">{ex.nome}</span>
+                                        <span className="text-xs font-bold uppercase tracking-wide leading-tight wrap-break-word">{ex.nome}</span>
                                         <span className="text-[10px] font-mono text-green-500 mt-1 font-bold">R$ {ex.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                     </div>
                                 </label>
