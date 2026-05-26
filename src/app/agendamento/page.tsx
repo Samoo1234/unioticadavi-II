@@ -47,6 +47,7 @@ function AgendamentoContent() {
 
     const [filtroEmpresaId, setFiltroEmpresaId] = useState<number>(profile?.unit_id || 0);
     const [filtroData, setFiltroData] = useState<string>(new Date().toISOString().split("T")[0]);
+    const [datasRealizadas, setDatasRealizadas] = useState<string[]>([]);
 
     useEffect(() => {
         if (profile?.unit_id) {
@@ -124,6 +125,32 @@ function AgendamentoContent() {
         setCarregando(false);
     }, [filtroEmpresaId, filtroData]);
 
+    const fetchDatasRealizadas = useCallback(async () => {
+        if (!filtroEmpresaId) return;
+        try {
+            const { data, error } = await supabase
+                .from('agendamentos')
+                .select('data')
+                .eq('empresa_id', filtroEmpresaId)
+                .neq('status', 'cancelado')
+                .order('data', { ascending: false });
+
+            if (!error && data) {
+                const uniqueDates = Array.from(new Set(data.map((item: any) => item.data))) as string[];
+                setDatasRealizadas(uniqueDates);
+            }
+        } catch (err) {
+            console.error("Erro ao buscar datas realizadas:", err);
+        }
+    }, [filtroEmpresaId]);
+
+    // Fetch datas realizadas
+    useEffect(() => {
+        if (filtroEmpresaId > 0) {
+            fetchDatasRealizadas();
+        }
+    }, [filtroEmpresaId, fetchDatasRealizadas]);
+
     // Fetch agendamentos
     useEffect(() => {
         if (filtroEmpresaId > 0 && filtroData) fetchAgendamentos();
@@ -165,12 +192,33 @@ function AgendamentoContent() {
         return [...datasConfig, ...datasExtras].sort((a, b) => a.value.localeCompare(b.value));
     }, [empresaFiltro, agenda, filtroEmpresaId]);
 
+    const datasRealizadasFormatadas = useMemo(() => {
+        return datasRealizadas.map(dataStr => {
+            const dateObj = new Date(dataStr + "T12:00:00");
+            const label = dateObj.toLocaleDateString("pt-BR", {
+                weekday: "short", day: "2-digit", month: "2-digit", year: "numeric"
+            }).toUpperCase();
+            return {
+                value: dataStr,
+                label: label
+            };
+        });
+    }, [datasRealizadas]);
+
     const medicoDoDia = useMemo(() => {
         const diaConfig = empresaFiltro?.configuracaoHorarios?.diasDisponiveis?.find(
             (d: any) => d.data === filtroData
         );
         return { nome: diaConfig?.medicoResponsavel || "", id: diaConfig?.medico_id || null };
     }, [empresaFiltro, filtroData]);
+
+    // Recarrega dados financeiros automaticamente se a filial ou a data mudarem na tela do financeiro geral
+    useEffect(() => {
+        if (view === "financeiro" && !financeiroIndividualId) {
+            const agendamentosAtivos = agendaFiltrada.filter(c => c.status !== "cancelado");
+            fetchFinanceiroData(agendamentosAtivos);
+        }
+    }, [view, agendaFiltrada, financeiroIndividualId, fetchFinanceiroData]);
 
     // Handlers
     const mostrarMensagemFn = (tipo: "sucesso" | "erro", texto: string) => {
@@ -433,7 +481,7 @@ function AgendamentoContent() {
                 )}
 
                 {/* Filtros */}
-                {!mostrarForm && view === "agenda" && (
+                {!mostrarForm && !financeiroIndividualId && (
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-end bg-gray-900 border border-gray-800 p-3 sm:p-4">
                         <div className="flex-1 min-w-0 sm:w-64">
                             <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">UNIDADE</label>
@@ -455,16 +503,29 @@ function AgendamentoContent() {
                         </div>
                         <div className="flex-1 min-w-0 sm:w-56">
                             <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">DATA</label>
-                            <select
-                                value={filtroData}
-                                onChange={(e) => setFiltroData(e.target.value)}
-                                className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
-                            >
-                                <option value="">Selecione uma data</option>
-                                {datasDisponiveisFiltro.map(d => (
-                                    <option key={d.value} value={d.value}>{d.label} {d.medico ? `(${d.medico})` : ""}</option>
-                                ))}
-                            </select>
+                            {view === "agenda" ? (
+                                <select
+                                    value={filtroData}
+                                    onChange={(e) => setFiltroData(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                                >
+                                    <option value="">Selecione uma data</option>
+                                    {datasDisponiveisFiltro.map(d => (
+                                        <option key={d.value} value={d.value}>{d.label} {d.medico ? `(${d.medico})` : ""}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <select
+                                    value={filtroData}
+                                    onChange={(e) => setFiltroData(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                                >
+                                    <option value="">Selecione uma data anterior</option>
+                                    {datasRealizadasFormatadas.map(d => (
+                                        <option key={d.value} value={d.value}>{d.label}</option>
+                                    ))}
+                                </select>
+                            )}
                         </div>
                         <button
                             onClick={() => { if (!profile?.unit_id) setFiltroEmpresaId(0); setFiltroData(new Date().toISOString().split("T")[0]); }}
