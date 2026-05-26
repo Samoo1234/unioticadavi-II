@@ -52,12 +52,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json()
-        const { empresaId, data, horario, pacienteNome, telefone } = body
+        const { empresaId, data, horario, pacienteNome, telefone, tipo, examesSelecionados, valorTotalExames } = body
 
         // Validation
         if (!empresaId || !data || !horario || !pacienteNome || !telefone) {
             return NextResponse.json(
                 { error: 'Preencha todos os campos obrigatórios' },
+                { status: 400 }
+            )
+        }
+
+        if (tipo === 'Exame' && (!examesSelecionados || examesSelecionados.length === 0)) {
+            return NextResponse.json(
+                { error: 'Por favor, selecione ao menos um exame' },
                 { status: 400 }
             )
         }
@@ -128,23 +135,47 @@ export async function POST(request: NextRequest) {
         }
 
         // 4. Insert appointment
-        const { error: erroAgendamento } = await supabase
+        const { data: novoAgd, error: erroAgendamento } = await supabase
             .from('agendamentos')
             .insert({
                 paciente_id: pacienteId,
                 empresa_id: empresaId,
                 data: data,
                 hora: horario,
-                tipo: 'Consulta',
+                tipo: tipo || 'Consulta',
                 medico_id: medicoId,
                 status: 'aguardando'
             })
+            .select('id')
+            .single()
 
-        if (erroAgendamento) {
+        if (erroAgendamento || !novoAgd) {
             return NextResponse.json(
                 { error: 'Erro ao criar agendamento' },
                 { status: 500 }
             )
+        }
+
+        // 4.1. If Exam, create financial record (Option A)
+        if (tipo === 'Exame') {
+            const { error: erroFin } = await supabase
+                .from('financeiro_agendamentos')
+                .upsert({
+                    id: novoAgd.id,
+                    valor_total: valorTotalExames || 0,
+                    tipo_financeiro: 'Exames',
+                    observacoes: `Exames: ${(examesSelecionados || []).join(', ')}`,
+                    pagamentos: []
+                })
+
+            if (erroFin) {
+                console.error('[API Pública] Erro ao criar financeiro:', erroFin)
+            } else {
+                // WhatsApp Template Formatting
+                const dataFormatadaMsg = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR')
+                const whatsappMsg = `*ÓTICA VISION - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${nomeTrimmed}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${(examesSelecionados || []).map((ex: string) => `• _${ex}_`).join('\n')}\n\n📅 *Data:* ${dataFormatadaMsg}\n⏰ *Horário:* ${horario}\n💰 *Valor Total:* R$ ${(valorTotalExames || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`
+                console.log("================ TELEMETRIA WHATSAPP (PUBLIC) ================\n", whatsappMsg, "\n==============================================================")
+            }
         }
 
         // 5. Build response details

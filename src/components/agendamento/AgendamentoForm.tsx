@@ -16,6 +16,26 @@ interface AgendamentoFormProps {
     initialPacienteNome?: string;
 }
 
+interface ExamOption {
+    nome: string;
+    valor: number;
+}
+
+const EXAMES_DISPONIVEIS: ExamOption[] = [
+    { nome: "Oct", valor: 400.00 },
+    { nome: "Checkup + Oct", valor: 1100.00 },
+    { nome: "Checkup + Campimetria", valor: 800.00 },
+    { nome: "Topografia", valor: 250.00 },
+    { nome: "Campimetria", valor: 250.00 },
+    { nome: "Paquimetria", valor: 200.00 },
+    { nome: "Gonioscopia", valor: 150.00 },
+    { nome: "Tonometria (curva de pressão)", valor: 150.00 },
+    { nome: "Retinografia", valor: 200.00 },
+    { nome: "Pré de Catarata (topog. Córnea + Biometria ultrassônica)", valor: 500.00 },
+    { nome: "Pterígio", valor: 1500.00 },
+    { nome: "Ultrassom", valor: 400.00 }
+];
+
 function adicionarMinutos(horario: string, minutos: number): string {
     const [h, m] = horario.split(":").map(Number);
     const totalMinutos = h * 60 + m + minutos;
@@ -81,6 +101,9 @@ export default function AgendamentoForm({
         pacienteNome: initialPacienteNome,
         pacienteId: null as string | null,
         telefone: "",
+        tipo: "Consulta" as "Consulta" | "Exame",
+        examesSelecionados: [] as string[],
+        valorTotalExames: 0
     });
 
     const [sugestoesPacientes, setSugestoesPacientes] = useState<{ id: string; nome: string; telefone?: string }[]>([]);
@@ -89,22 +112,79 @@ export default function AgendamentoForm({
     const [horariosOcupados, setHorariosOcupados] = useState<string[]>([]);
     const [buscandoHorarios, setBuscandoHorarios] = useState(false);
 
-    // Load editando data
+    // Load editando data and its financial/paciente details
     useEffect(() => {
-        if (editandoId) {
-            const agendamento = agenda.find(c => c.id === editandoId);
-            if (agendamento) {
-                setFormData({
-                    empresaId: agendamento.empresaId,
-                    data: agendamento.data,
-                    horario: agendamento.hora,
-                    pacienteNome: agendamento.pacienteNome,
-                    pacienteId: agendamento.pacienteId ? String(agendamento.pacienteId) : null,
-                    telefone: "",
-                });
+        const loadEditandoData = async () => {
+            if (editandoId) {
+                const agendamento = agenda.find(c => c.id === editandoId);
+                if (agendamento) {
+                    let tipoVal: "Consulta" | "Exame" = agendamento.tipo === "Exame" ? "Exame" : "Consulta";
+                    let examesSel: string[] = [];
+                    let valorTot = 0;
+
+                    if (tipoVal === "Exame") {
+                        const { data: finData, error } = await supabase
+                            .from('financeiro_agendamentos')
+                            .select('*')
+                            .eq('id', editandoId)
+                            .maybeSingle();
+                        
+                        if (!error && finData) {
+                            valorTot = finData.valor_total || 0;
+                            const obs = finData.observacoes || "";
+                            if (obs.startsWith("Exames: ")) {
+                                examesSel = obs.replace("Exames: ", "").split(", ").filter(Boolean);
+                            }
+                        }
+                    }
+
+                    // Tenta buscar telefone do paciente também
+                    let tel = "";
+                    if (agendamento.pacienteId) {
+                        const { data: pacData } = await supabase
+                            .from('pacientes')
+                            .select('telefone')
+                            .eq('id', agendamento.pacienteId)
+                            .maybeSingle();
+                        if (pacData?.telefone) tel = pacData.telefone;
+                    }
+
+                    setFormData({
+                        empresaId: agendamento.empresaId,
+                        data: agendamento.data,
+                        horario: agendamento.hora,
+                        pacienteNome: agendamento.pacienteNome,
+                        pacienteId: agendamento.pacienteId ? String(agendamento.pacienteId) : null,
+                        telefone: tel,
+                        tipo: tipoVal,
+                        examesSelecionados: examesSel,
+                        valorTotalExames: valorTot
+                    });
+                }
+            }
+        };
+
+        loadEditandoData();
+    }, [editandoId, agenda]);
+
+    // Mantena Auto-selection and Locking for Exams
+    useEffect(() => {
+        if (formData.tipo === "Exame" && empresas.length > 0) {
+            const mantena = empresas.find(e => 
+                e.ativo && 
+                (e.cidade?.toLowerCase().includes("mantena") || e.nomeFantasia?.toLowerCase().includes("mantena")) &&
+                !e.nomeFantasia?.toLowerCase().includes("depósito")
+            );
+            if (mantena && formData.empresaId !== mantena.id) {
+                setFormData(prev => ({
+                    ...prev,
+                    empresaId: mantena.id,
+                    data: "", // reset date and time as we changed branch
+                    horario: ""
+                }));
             }
         }
-    }, [editandoId, agenda]);
+    }, [formData.tipo, empresas, formData.empresaId]);
 
     // Buscar pacientes
     const buscarPacientes = useCallback(async (termo: string) => {
@@ -187,6 +267,24 @@ export default function AgendamentoForm({
         setSugestoesPacientes([]);
     };
 
+    const handleExameToggle = (exameNome: string, valor: number) => {
+        const jaSelecionado = formData.examesSelecionados.includes(exameNome);
+        const novosExames = jaSelecionado
+            ? formData.examesSelecionados.filter(name => name !== exameNome)
+            : [...formData.examesSelecionados, exameNome];
+        
+        const novoTotal = novosExames.reduce((acc, name) => {
+            const ex = EXAMES_DISPONIVEIS.find(item => item.nome === name);
+            return acc + (ex?.valor || 0);
+        }, 0);
+
+        setFormData(prev => ({
+            ...prev,
+            examesSelecionados: novosExames,
+            valorTotalExames: novoTotal
+        }));
+    };
+
     const empresaSelecionada = useMemo(() => {
         return empresas.find((e) => e.id === formData.empresaId);
     }, [formData.empresaId, empresas]);
@@ -222,6 +320,11 @@ export default function AgendamentoForm({
             return;
         }
 
+        if (formData.tipo === "Exame" && formData.examesSelecionados.length === 0) {
+            mostrarMensagem("erro", "POR FAVOR, SELECIONE AO MENOS UM EXAME");
+            return;
+        }
+
         try {
             let pacienteId = formData.pacienteId;
             if (!pacienteId) {
@@ -254,6 +357,8 @@ export default function AgendamentoForm({
                 return;
             }
 
+            let agendamentoId = editandoId;
+
             if (editandoId) {
                 const { error } = await supabase
                     .from('agendamentos')
@@ -261,6 +366,7 @@ export default function AgendamentoForm({
                         empresa_id: formData.empresaId,
                         data: formData.data,
                         hora: formData.horario,
+                        tipo: formData.tipo,
                         medico_id: medicoDoDia.id,
                         status: "aguardando"
                     })
@@ -268,19 +374,41 @@ export default function AgendamentoForm({
                 if (error) throw error;
                 mostrarMensagem("sucesso", "AGENDAMENTO ATUALIZADO COM SUCESSO");
             } else {
-                const { error } = await supabase
+                const { data: novoAgd, error: erroA } = await supabase
                     .from('agendamentos')
                     .insert({
                         paciente_id: pacienteId,
                         empresa_id: formData.empresaId,
                         data: formData.data,
                         hora: formData.horario,
-                        tipo: "Consulta",
+                        tipo: formData.tipo,
                         medico_id: medicoDoDia.id,
                         status: "aguardando"
-                    });
-                if (error) throw error;
+                    })
+                    .select('id')
+                    .single();
+                if (erroA) throw erroA;
+                agendamentoId = novoAgd.id;
                 mostrarMensagem("sucesso", "AGENDAMENTO CRIADO COM SUCESSO");
+            }
+
+            // Gravação Integrada no Financeiro (Opção A) se for do tipo Exame
+            if (formData.tipo === "Exame" && agendamentoId) {
+                const { error: erroFin } = await supabase
+                    .from('financeiro_agendamentos')
+                    .upsert({
+                        id: agendamentoId,
+                        valor_total: formData.valorTotalExames,
+                        tipo_financeiro: "Exames",
+                        observacoes: `Exames: ${formData.examesSelecionados.join(", ")}`,
+                        pagamentos: []
+                    });
+                if (erroFin) throw erroFin;
+
+                // Template e Log do Envio do WhatsApp
+                const dataFormatada = new Date(formData.data + "T12:00:00").toLocaleDateString('pt-BR');
+                const whatsappMsg = `*ÓTICA VISION - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${formData.pacienteNome}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${formData.examesSelecionados.map(ex => `• _${ex}_`).join("\n")}\n\n📅 *Data:* ${dataFormatada}\n⏰ *Horário:* ${formData.horario}\n💰 *Valor Total:* R$ ${formData.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`;
+                console.log("================ TELEMETRIA WHATSAPP ================\n", whatsappMsg, "\n=====================================================");
             }
 
             onSalvar();
@@ -295,7 +423,7 @@ export default function AgendamentoForm({
             <div className="text-xs font-bold text-gray-400 mb-4 pb-2 border-b border-gray-700">
                 {editandoId ? "REAGENDAR ATENDIMENTO" : "NOVO AGENDAMENTO"}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
                 {/* Unidade */}
                 <div>
                     <label htmlFor="unidade" className="text-xs text-gray-500 block mb-1">
@@ -304,9 +432,9 @@ export default function AgendamentoForm({
                     <select
                         id="unidade"
                         value={formData.empresaId}
-                        disabled={!!profile?.unit_id}
+                        disabled={!!profile?.unit_id || formData.tipo === "Exame"}
                         onChange={(e) => setFormData({ ...formData, empresaId: Number(e.target.value), data: "", horario: "" })}
-                        className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${profile?.unit_id ? 'opacity-70 cursor-not-allowed' : ''}`}
+                        className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${(profile?.unit_id || formData.tipo === "Exame") ? 'opacity-70 cursor-not-allowed' : ''}`}
                     >
                         {!profile?.unit_id && <option value={0}>Selecione uma unidade</option>}
                         {unidades.map((u) => (
@@ -314,6 +442,27 @@ export default function AgendamentoForm({
                                 {u.label} {u.temHorarios ? "✓" : ""}
                             </option>
                         ))}
+                    </select>
+                    {formData.tipo === "Exame" && (
+                        <span className="text-[10px] text-yellow-500 font-bold block mt-1 uppercase tracking-wider animate-pulse">
+                            ⚠️ Apenas filial Mantena
+                        </span>
+                    )}
+                </div>
+
+                {/* Tipo de Agendamento */}
+                <div>
+                    <label htmlFor="tipo" className="text-xs text-gray-500 block mb-1">
+                        TIPO <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                        id="tipo"
+                        value={formData.tipo}
+                        onChange={(e) => setFormData({ ...formData, tipo: e.target.value as "Consulta" | "Exame", examesSelecionados: [], valorTotalExames: 0 })}
+                        className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                    >
+                        <option value="Consulta">Consulta</option>
+                        <option value="Exame">Exame</option>
                     </select>
                 </div>
 
@@ -427,6 +576,42 @@ export default function AgendamentoForm({
                     />
                 </div>
             </div>
+
+            {/* Seção de Exames (Apenas se for tipo Exame) */}
+            {formData.tipo === "Exame" && (
+                <div className="mt-4 p-4 bg-gray-900/50 border border-gray-800">
+                    <div className="text-xs font-black text-gray-400 mb-3 uppercase tracking-widest border-b border-gray-800 pb-1.5 flex justify-between items-center">
+                        <span>Selecione os Exames Clínicos</span>
+                        <span className="text-green-500 font-mono text-sm">Total: R$ {formData.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {EXAMES_DISPONIVEIS.map(ex => {
+                            const selecionado = formData.examesSelecionados.includes(ex.nome);
+                            return (
+                                <label
+                                    key={ex.nome}
+                                    className={`flex items-start gap-3 p-2.5 border rounded cursor-pointer transition-all duration-150 ${
+                                        selecionado
+                                            ? "bg-green-500/10 border-green-500/50 text-white"
+                                            : "bg-gray-800/40 border-gray-800 text-gray-400 hover:bg-gray-800/80 hover:border-gray-700"
+                                    }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={selecionado}
+                                        onChange={() => handleExameToggle(ex.nome, ex.valor)}
+                                        className="mt-0.5 rounded border-gray-700 text-green-600 focus:ring-green-500/30 bg-gray-900"
+                                    />
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-xs font-bold uppercase tracking-wide leading-tight break-words">{ex.nome}</span>
+                                        <span className="text-[10px] font-mono text-green-500 mt-1 font-bold">R$ {ex.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                    </div>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             <div className="mt-4 pt-4 border-t border-gray-700 flex gap-3">
                 <button

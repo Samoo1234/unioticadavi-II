@@ -16,6 +16,26 @@ interface DiaDisponivel {
     medico?: string;
 }
 
+interface ExamOption {
+    nome: string;
+    valor: number;
+}
+
+const EXAMES_DISPONIVEIS: ExamOption[] = [
+    { nome: "Oct", valor: 400.00 },
+    { nome: "Checkup + Oct", valor: 1100.00 },
+    { nome: "Checkup + Campimetria", valor: 800.00 },
+    { nome: "Topografia", valor: 250.00 },
+    { nome: "Campimetria", valor: 250.00 },
+    { nome: "Paquimetria", valor: 200.00 },
+    { nome: "Gonioscopia", valor: 150.00 },
+    { nome: "Tonometria (curva de pressão)", valor: 150.00 },
+    { nome: "Retinografia", valor: 200.00 },
+    { nome: "Pré de Catarata (topog. Córnea + Biometria ultrassônica)", valor: 500.00 },
+    { nome: "Pterígio", valor: 1500.00 },
+    { nome: "Ultrassom", valor: 400.00 }
+];
+
 function adicionarMinutos(horario: string, minutos: number): string {
     const [h, m] = horario.split(":").map(Number);
     const totalMinutos = h * 60 + m + minutos;
@@ -77,6 +97,9 @@ export default function AgendamentoPublico() {
         horario: "",
         pacienteNome: "",
         telefone: "",
+        tipo: "Consulta" as "Consulta" | "Exame",
+        examesSelecionados: [] as string[],
+        valorTotalExames: 0
     });
 
     // Load companies
@@ -89,6 +112,42 @@ export default function AgendamentoPublico() {
             })
             .catch(() => setCarregando(false));
     }, []);
+
+    // Mantena Auto-selection and Locking for Exams in Public Form
+    useEffect(() => {
+        if (form.tipo === "Exame" && empresas.length > 0) {
+            const mantena = empresas.find(e => 
+                (e.cidade?.toLowerCase().includes("mantena") || e.nome_fantasia?.toLowerCase().includes("mantena")) &&
+                !e.nome_fantasia?.toLowerCase().includes("depósito")
+            );
+            if (mantena && form.empresaId !== mantena.id) {
+                setForm(prev => ({
+                    ...prev,
+                    empresaId: mantena.id,
+                    data: "", // reset date and time as we changed branch
+                    horario: ""
+                }));
+            }
+        }
+    }, [form.tipo, empresas, form.empresaId]);
+
+    const handleExameToggle = (exameNome: string, valor: number) => {
+        const jaSelecionado = form.examesSelecionados.includes(exameNome);
+        const novosExames = jaSelecionado
+            ? form.examesSelecionados.filter(name => name !== exameNome)
+            : [...form.examesSelecionados, exameNome];
+        
+        const novoTotal = novosExames.reduce((acc, name) => {
+            const ex = EXAMES_DISPONIVEIS.find(item => item.nome === name);
+            return acc + (ex?.valor || 0);
+        }, 0);
+
+        setForm(prev => ({
+            ...prev,
+            examesSelecionados: novosExames,
+            valorTotalExames: novoTotal
+        }));
+    };
 
     // Load occupied slots when empresa + data changes
     useEffect(() => {
@@ -130,6 +189,13 @@ export default function AgendamentoPublico() {
             return;
         }
 
+        if (form.tipo === "Exame" && form.examesSelecionados.length === 0) {
+            setMensagemErro("Por favor, selecione ao menos um exame");
+            setEstado("erro");
+            setTimeout(() => setEstado("formulario"), 3000);
+            return;
+        }
+
         setEstado("enviando");
 
         try {
@@ -159,7 +225,16 @@ export default function AgendamentoPublico() {
     };
 
     const resetForm = () => {
-        setForm({ empresaId: 0, data: "", horario: "", pacienteNome: "", telefone: "" });
+        setForm({
+            empresaId: 0,
+            data: "",
+            horario: "",
+            pacienteNome: "",
+            telefone: "",
+            tipo: "Consulta",
+            examesSelecionados: [],
+            valorTotalExames: 0
+        });
         setEstado("formulario");
 
         setDetalhes(null);
@@ -224,16 +299,36 @@ export default function AgendamentoPublico() {
                 </div>
             </div>
 
-            {/* Unidade */}
+            {/* Tipo de Agendamento */}
             <div>
                 <label className="text-[10px] font-bold text-gray-400 uppercase mb-1.5 block tracking-wider">
-                    Unidade <span className="text-red-500">*</span>
+                    Tipo de Agendamento <span className="text-red-500">*</span>
+                </label>
+                <select
+                    value={form.tipo}
+                    onChange={(e) => setForm({ ...form, tipo: e.target.value as "Consulta" | "Exame", examesSelecionados: [], valorTotalExames: 0 })}
+                    className="w-full bg-gray-950 border border-gray-800 text-white text-sm px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
+                >
+                    <option value="Consulta">Consulta</option>
+                    <option value="Exame">Exame</option>
+                </select>
+            </div>
+
+            {/* Unidade */}
+            <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase mb-1.5 block tracking-wider flex justify-between items-center">
+                    <span>Unidade <span className="text-red-500">*</span></span>
+                    {form.tipo === "Exame" && (
+                        <span className="text-[9px] text-yellow-500 font-bold uppercase tracking-wider animate-pulse">
+                            ⚠️ Apenas filial Mantena
+                        </span>
+                    )}
                 </label>
                 <select
                     value={form.empresaId}
                     onChange={(e) => setForm({ ...form, empresaId: Number(e.target.value), data: "", horario: "" })}
-                    className="w-full bg-gray-950 border border-gray-800 text-white text-sm px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
-                    disabled={carregando}
+                    className="w-full bg-gray-950 border border-gray-800 text-white text-sm px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all disabled:opacity-75"
+                    disabled={carregando || form.tipo === "Exame"}
                 >
                     <option value={0}>{carregando ? "Carregando..." : "Selecione a unidade"}</option>
                     {empresas.map(e => (
@@ -328,6 +423,51 @@ export default function AgendamentoPublico() {
                     className="w-full bg-gray-950 border border-gray-800 text-white text-sm px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all placeholder-gray-700"
                 />
             </div>
+
+            {/* Seção de Seleção de Exames (Apenas se for tipo Exame) */}
+            {form.tipo === "Exame" && (
+                <div className="bg-gray-950/40 border border-gray-800/80 rounded-xl p-4 space-y-3 animate-[fadeIn_0.3s_ease-out]">
+                    <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                            Selecione os Exames
+                        </span>
+                        <span className="text-xs font-bold text-emerald-400 font-mono">
+                            Total: R$ {form.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                        {EXAMES_DISPONIVEIS.map((ex) => {
+                            const selecionado = form.examesSelecionados.includes(ex.nome);
+                            return (
+                                <label
+                                    key={ex.nome}
+                                    className={`flex items-start gap-2.5 p-2.5 border rounded-xl cursor-pointer transition-all duration-200 select-none ${
+                                        selecionado
+                                            ? "bg-emerald-500/10 border-emerald-500/30 text-white shadow-[0_2px_8px_-2px_rgba(16,185,129,0.15)]"
+                                            : "bg-gray-950/60 border-gray-800 text-gray-400 hover:bg-gray-900/60 hover:border-gray-700 hover:text-gray-300"
+                                    }`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={selecionado}
+                                        onChange={() => handleExameToggle(ex.nome, ex.valor)}
+                                        className="mt-0.5 rounded border-gray-800 text-emerald-600 focus:ring-emerald-500/20 bg-gray-950"
+                                    />
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider leading-tight break-words">
+                                            {ex.nome}
+                                        </span>
+                                        <span className="text-[9px] font-mono text-emerald-400 mt-1 font-bold">
+                                            R$ {ex.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Error message */}
             {estado === "erro" && (
