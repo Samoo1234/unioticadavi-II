@@ -97,7 +97,7 @@ export default function AgendamentoPublico() {
         horario: "",
         pacienteNome: "",
         telefone: "",
-        tipo: "Consulta" as "Consulta" | "Exame",
+        tipo: "Consulta" as "Consulta" | "Exame" | "Retorno",
         examesSelecionados: [] as string[],
         valorTotalExames: 0
     });
@@ -306,11 +306,12 @@ export default function AgendamentoPublico() {
                 </label>
                 <select
                     value={form.tipo}
-                    onChange={(e) => setForm({ ...form, tipo: e.target.value as "Consulta" | "Exame", examesSelecionados: [], valorTotalExames: 0 })}
+                    onChange={(e) => setForm({ ...form, tipo: e.target.value as "Consulta" | "Exame" | "Retorno", examesSelecionados: [], valorTotalExames: 0 })}
                     className="w-full bg-gray-950 border border-gray-800 text-white text-sm px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
                 >
                     <option value="Consulta">Consulta</option>
                     <option value="Exame">Exame</option>
+                    <option value="Retorno">Retorno</option>
                 </select>
             </div>
 

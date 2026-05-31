@@ -42,7 +42,7 @@ export default function AgendaFinanceiro({
                                 </thead>
                                 <tbody className="divide-y divide-gray-800">
                                     {(() => {
-                                        const tipos = ["Particular", "Convênio", "Campanha", "Exames", "Revisão"] as TipoFinanceiroAgendamento[];
+                                        const tipos = ["Particular", "Convênio", "Campanha", "Exames", "Revisão", "Retorno"] as TipoFinanceiroAgendamento[];
                                         let totalQtd = 0;
                                         let totalValor = 0;
                                         const rows = tipos.map(t => {
@@ -162,6 +162,7 @@ export default function AgendaFinanceiro({
                                             <option value="Campanha">Campanha</option>
                                             <option value="Exames">Exames</option>
                                             <option value="Revisão">Revisão</option>
+                                            <option value="Retorno">Retorno</option>
                                         </select>
                                     </td>
                                     <td className="px-4 py-4">

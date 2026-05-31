@@ -101,7 +101,7 @@ export default function AgendamentoForm({
         pacienteNome: initialPacienteNome,
         pacienteId: null as string | null,
         telefone: "",
-        tipo: "Consulta" as "Consulta" | "Exame",
+        tipo: "Consulta" as "Consulta" | "Exame" | "Retorno",
         examesSelecionados: [] as string[],
         valorTotalExames: 0
     });
@@ -118,7 +118,7 @@ export default function AgendamentoForm({
             if (editandoId) {
                 const agendamento = agenda.find(c => c.id === editandoId);
                 if (agendamento) {
-                    let tipoVal: "Consulta" | "Exame" = agendamento.tipo === "Exame" ? "Exame" : "Consulta";
+                    let tipoVal: "Consulta" | "Exame" | "Retorno" = agendamento.tipo === "Exame" ? "Exame" : (agendamento.tipo === "Retorno" ? "Retorno" : "Consulta");
                     let examesSel: string[] = [];
                     let valorTot = 0;
 
@@ -401,7 +401,7 @@ export default function AgendamentoForm({
                 mostrarMensagem("sucesso", "AGENDAMENTO CRIADO COM SUCESSO");
             }
 
-            // Gravação Integrada no Financeiro (Opção A) se for do tipo Exame
+            // Gravação Integrada no Financeiro (Opção A) se for do tipo Exame ou Retorno
             if (formData.tipo === "Exame" && agendamentoId) {
                 const { error: erroFin } = await supabase
                     .from('financeiro_agendamentos')
@@ -415,9 +415,20 @@ export default function AgendamentoForm({
                 if (erroFin) throw erroFin;
 
                 // Template e Log do Envio do WhatsApp
-                const dataFormatada = new Date(formData.data + "T12:00:00").toLocaleDateString('pt-BR');
-                const whatsappMsg = `*ÓTICA DAVI - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${formData.pacienteNome}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${formData.examesSelecionados.map(ex => `• _${ex}_`).join("\n")}\n\n📅 *Data:* ${dataFormatada}\n⏰ *Horário:* ${formData.horario}\n💰 *Valor Total:* R$ ${formData.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`;
+                const dataFormatadaMsg = new Date(formData.data + "T12:00:00").toLocaleDateString('pt-BR');
+                const whatsappMsg = `*ÓTICA DAVI - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${formData.pacienteNome}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${formData.examesSelecionados.map(ex => `• _${ex}_`).join("\n")}\n\n📅 *Data:* ${dataFormatadaMsg}\n⏰ *Horário:* ${formData.horario}\n💰 *Valor Total:* R$ ${formData.valorTotalExames.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`;
                 console.log("================ TELEMETRIA WHATSAPP ================\n", whatsappMsg, "\n=====================================================");
+            } else if (formData.tipo === "Retorno" && agendamentoId) {
+                const { error: erroFin } = await supabase
+                    .from('financeiro_agendamentos')
+                    .upsert({
+                        id: agendamentoId,
+                        valor_total: 0,
+                        tipo_financeiro: "Retorno",
+                        observacoes: "Retorno sem custo",
+                        pagamentos: []
+                    });
+                if (erroFin) throw erroFin;
             }
 
             onSalvar();
@@ -467,11 +478,12 @@ export default function AgendamentoForm({
                     <select
                         id="tipo"
                         value={formData.tipo}
-                        onChange={(e) => setFormData({ ...formData, tipo: e.target.value as "Consulta" | "Exame", examesSelecionados: [], valorTotalExames: 0 })}
+                        onChange={(e) => setFormData({ ...formData, tipo: e.target.value as "Consulta" | "Exame" | "Retorno", examesSelecionados: [], valorTotalExames: 0 })}
                         className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
                     >
                         <option value="Consulta">Consulta</option>
                         <option value="Exame">Exame</option>
+                        <option value="Retorno">Retorno</option>
                     </select>
                 </div>
 

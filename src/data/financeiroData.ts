@@ -2,7 +2,7 @@
 
 export type FormaPagamento = "Dinheiro" | "PIX" | "Cartao Debito" | "Cartao Credito" | "Boleto" | "Outros";
 
-export type TipoFinanceiroAgendamento = "Particular" | "Convênio" | "Campanha" | "Exames" | "Revisão";
+export type TipoFinanceiroAgendamento = "Particular" | "Convênio" | "Campanha" | "Exames" | "Revisão" | "Retorno";
 export type SituacaoFinanceiroAgendamento = "Caso Clínico" | "Efetivação" | "Perda";
 
 export interface PagamentoAgendamento {

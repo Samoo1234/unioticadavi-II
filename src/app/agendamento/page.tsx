@@ -230,6 +230,18 @@ function AgendamentoContent() {
         }
     }, [view, agendaFiltrada, financeiroIndividualId, fetchFinanceiroData]);
 
+    // Rolar ate o formulario quando ele for exibido (reagendamento ou novo agendamento)
+    useEffect(() => {
+        if (mostrarForm) {
+            setTimeout(() => {
+                const element = document.getElementById("form-agendamento");
+                if (element) {
+                    element.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+            }, 100);
+        }
+    }, [mostrarForm, editandoId]);
+
     // Handlers
     const mostrarMensagemFn = (tipo: "sucesso" | "erro", texto: string) => {
         setMensagem({ tipo, texto });
@@ -340,7 +352,7 @@ function AgendamentoContent() {
     };
 
     const handleImprimirAgendamentoCompleto = () => {
-        const tipos: TipoFinanceiroAgendamento[] = ["Particular", "Convênio", "Campanha", "Exames", "Revisão"];
+        const tipos: TipoFinanceiroAgendamento[] = ["Particular", "Convênio", "Campanha", "Exames", "Revisão", "Retorno"];
         const resumoPorTipo = tipos.map(t => {
             const filtrados = registrosFin.filter(r => r.tipo === t);
             return { tipo: t, qtd: filtrados.length, total: filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0) };
@@ -379,25 +391,36 @@ function AgendamentoContent() {
             data: new Date(filtroData + "T12:00:00").toLocaleDateString('pt-BR'),
             unidade: empresaFiltro?.nomeFantasia || "TODAS AS UNIDADES",
             operador: profile?.nome || "ADMIN",
-            registros: agendaFiltrada.map(agd => ({
-                hora: agd.hora, pacienteNome: agd.pacienteNome,
-                telefone: "", medico: nomeMedico, status: agd.status, observacoes: ""
-            }))
+            registros: agendaFiltrada.map(agd => {
+                const fin = registrosFin.find(r => r.id === agd.id);
+                return {
+                    hora: agd.hora, pacienteNome: agd.pacienteNome,
+                    telefone: "", medico: nomeMedico, status: agd.status,
+                    observacoes: fin?.observacoes || ""
+                };
+            })
         };
 
         try {
             const { data, error } = await supabase
-                .from('agendamentos').select('*, pacientes(nome, telefone)')
+                .from('agendamentos').select('*, pacientes(nome, telefone), financeiro_agendamentos(tipo_financeiro, observacoes)')
                 .eq('empresa_id', filtroEmpresaId).eq('data', filtroData)
                 .neq('status', 'cancelado')
                 .order('hora');
 
             if (!error && data) {
-                dadosRelatorio.registros = data.map((item: any) => ({
-                    hora: item.hora.substring(0, 5), pacienteNome: item.pacientes?.nome || 'Desconhecido',
-                    telefone: item.pacientes?.telefone || '', medico: nomeMedico,
-                    status: item.status, observacoes: ''
-                }));
+                dadosRelatorio.registros = data.map((item: any) => {
+                    const fin = Array.isArray(item.financeiro_agendamentos)
+                        ? item.financeiro_agendamentos[0]
+                        : item.financeiro_agendamentos;
+                    const obsFin = fin?.observacoes || "";
+
+                    return {
+                        hora: item.hora.substring(0, 5), pacienteNome: item.pacientes?.nome || 'Desconhecido',
+                        telefone: item.pacientes?.telefone || '', medico: nomeMedico,
+                        status: item.status, observacoes: obsFin
+                    };
+                });
             }
         } catch (err) { console.error("Erro ao buscar dados completos para relatório", err); }
 
@@ -461,15 +484,17 @@ function AgendamentoContent() {
 
                 {/* Formulário */}
                 {mostrarForm && (
-                    <AgendamentoForm
-                        empresas={listaEmpresas}
-                        editandoId={editandoId}
-                        agenda={agenda}
-                        onSalvar={handleFormSalvar}
-                        onCancelar={handleCancelarForm}
-                        mostrarMensagem={mostrarMensagemFn}
-                        initialPacienteNome={pacienteUrl || ""}
-                    />
+                    <div id="form-agendamento">
+                        <AgendamentoForm
+                            empresas={listaEmpresas}
+                            editandoId={editandoId}
+                            agenda={agenda}
+                            onSalvar={handleFormSalvar}
+                            onCancelar={handleCancelarForm}
+                            mostrarMensagem={mostrarMensagemFn}
+                            initialPacienteNome={pacienteUrl || ""}
+                        />
+                    </div>
                 )}
 
                 {/* Resumo de status */}

@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // 4.1. If Exam, create financial record (Option A)
+        // 4.1. If Exam or Return, create financial record (Option A)
         if (tipo === 'Exame') {
             const { error: erroFin } = await supabase
                 .from('financeiro_agendamentos')
@@ -186,6 +186,20 @@ export async function POST(request: NextRequest) {
                 const dataFormatadaMsg = new Date(data + 'T12:00:00').toLocaleDateString('pt-BR')
                 const whatsappMsg = `*ÓTICA DAVI - CONFIRMAÇÃO DE EXAME*\n\nOlá, *${nomeTrimmed}*!\n\nSeu agendamento para realizar os seguintes exames na filial *Mantena* foi confirmado:\n\n${(examesSelecionados || []).map((ex: string) => `• _${ex}_`).join('\n')}\n\n📅 *Data:* ${dataFormatadaMsg}\n⏰ *Horário:* ${horario}\n💰 *Valor Total:* R$ ${(valorTotalExames || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}\n\nEsperamos você!`
                 console.log("================ TELEMETRIA WHATSAPP (PUBLIC) ================\n", whatsappMsg, "\n==============================================================")
+            }
+        } else if (tipo === 'Retorno') {
+            const { error: erroFin } = await supabase
+                .from('financeiro_agendamentos')
+                .upsert({
+                    id: novoAgd.id,
+                    valor_total: 0,
+                    tipo_financeiro: 'Retorno',
+                    observacoes: 'Retorno sem custo',
+                    pagamentos: []
+                })
+
+            if (erroFin) {
+                console.error('[API Pública] Erro ao criar financeiro para Retorno:', erroFin)
             }
         }
 
