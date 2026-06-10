@@ -1032,3 +1032,142 @@ export function imprimirRelatorioFluxoSemanal(data: ReportFluxoSemanalData) {
         windowPrint.document.close();
     }
 }
+
+export interface ReportHistoricoData {
+    titulo: string;
+    periodo: string;
+    unidade: string;
+    operador: string;
+    registros: {
+        data: string;
+        hora: string;
+        pacienteNome: string;
+        telefone: string;
+        medico: string;
+        filial: string;
+        tipo: string;
+        status: string;
+    }[];
+}
+
+export function gerarRelatorioHistoricoHTML(data: ReportHistoricoData): string {
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>${data.titulo} - ${data.periodo}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            font-size: 11px; 
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            color: #000;
+        }
+        .report-container {
+            border: 2px solid #000;
+            padding: 15px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .header h1 { font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+        .header h2 { font-size: 14px; color: #333; margin-bottom: 5px; }
+        
+        .info-grid { display: flex; border-bottom: 1px solid #000; margin-bottom: 15px; }
+        .info-cell { flex: 1; padding: 5px 8px; border-right: 1px solid #999; }
+        .info-cell:last-child { border-right: none; }
+        .info-cell label { font-weight: bold; font-size: 9px; color: #666; display: block; text-transform: uppercase; }
+        .info-cell span { font-size: 11px; font-weight: bold; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 1px solid #999; padding: 6px 8px; text-align: left; font-size: 10px; }
+        th { background: #f2f2f2; font-weight: bold; text-transform: uppercase; }
+        .font-mono { font-family: 'Courier New', Courier, monospace; }
+
+        .footer { 
+            margin-top: 30px; 
+            text-align: center; 
+            font-size: 10px; 
+            color: #666; 
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+
+        @media print {
+            body { padding: 0; }
+            .report-container { border-width: 1px; }
+            @page { margin: 1cm; }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="header">
+            <h1>ÓTICA DAVI</h1>
+            <h2>${data.titulo}</h2>
+            <p>${data.periodo}</p>
+        </div>
+
+        <div class="info-grid">
+            <div class="info-cell"><label>Unidade / Filial:</label><span>${data.unidade}</span></div>
+            <div class="info-cell"><label>Hora Impressão:</label><span>${new Date().toLocaleTimeString('pt-BR')}</span></div>
+            <div class="info-cell"><label>Operador:</label><span>${data.operador}</span></div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 80px;">DATA</th>
+                    <th style="width: 50px;">HORA</th>
+                    <th>PACIENTE</th>
+                    <th style="width: 100px;">TELEFONE</th>
+                    <th>FILIAL / UNIDADE</th>
+                    <th style="width: 80px;">TIPO</th>
+                    <th style="width: 90px;">STATUS</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${data.registros.length === 0 ? '<tr><td colspan="7" style="text-align: center;">Nenhum agendamento encontrado no histórico</td></tr>' :
+            data.registros.map(r => `
+                    <tr>
+                        <td class="font-mono">${r.data}</td>
+                        <td class="font-mono">${r.hora}</td>
+                        <td style="font-weight: bold;">${r.pacienteNome.toUpperCase()}</td>
+                        <td class="font-mono" style="font-size: 9px;">${r.telefone || '-'}</td>
+                        <td style="text-transform: uppercase;">${r.filial}</td>
+                        <td>${r.tipo.toUpperCase()}</td>
+                        <td style="font-weight: bold;">${r.status.toUpperCase()}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+
+        <div class="footer">
+            <p>Documento gerado pelo Sistema Ótica Davi - ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>
+            <p>Conferido por: __________________________________________________</p>
+        </div>
+    </div>
+    
+    <script>
+        window.onload = function() { window.print(); }
+    </script>
+</body>
+</html>`;
+}
+
+export function imprimirRelatorioHistorico(data: ReportHistoricoData) {
+    const html = gerarRelatorioHistoricoHTML(data);
+    const windowPrint = window.open('', '_blank');
+    if (windowPrint) {
+        windowPrint.document.write(html);
+        windowPrint.document.close();
+    }
+}

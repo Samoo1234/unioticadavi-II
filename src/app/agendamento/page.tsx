@@ -6,7 +6,7 @@ import { Consulta } from "@/types";
 import { RegistroFinanceiroAgendamento, TipoFinanceiroAgendamento, PagamentoAgendamento, FormaPagamento } from "@/data/financeiroData";
 import { useState, useMemo, useEffect, Suspense, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { imprimirRelatorioAgendamentoCompleto, ReportAgendamentoData, imprimirRelatorioListaOperacional, ReportAgendaOperacionalData } from "@/utils/reportUtils";
+import { imprimirRelatorioAgendamentoCompleto, ReportAgendamentoData, imprimirRelatorioListaOperacional, ReportAgendaOperacionalData, imprimirRelatorioHistorico, ReportHistoricoData } from "@/utils/reportUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import FeedbackMessage from "@/components/ui/FeedbackMessage";
 import AgendamentoForm from "@/components/agendamento/AgendamentoForm";
@@ -39,8 +39,17 @@ function AgendamentoContent() {
     const [agenda, setAgenda] = useState<Consulta[]>([]);
     const [carregando, setCarregando] = useState(true);
     const [mostrarForm, setMostrarForm] = useState(false);
-    const [view, setView] = useState<"agenda" | "financeiro">("agenda");
+    const [view, setView] = useState<"agenda" | "financeiro" | "historico">("agenda");
     const [registrosFin, setRegistrosFin] = useState<RegistroFinanceiroAgendamento[]>([]);
+
+    // Estados do histórico
+    const [historicoFiltroPaciente, setHistoricoFiltroPaciente] = useState("");
+    const [historicoFiltroPacienteDebounced, setHistoricoFiltroPacienteDebounced] = useState("");
+    const [historicoFiltroEmpresaId, setHistoricoFiltroEmpresaId] = useState<number>(profile?.unit_id || 0);
+    const [historicoFiltroData, setHistoricoFiltroData] = useState("");
+    const [historicoResultados, setHistoricoResultados] = useState<Consulta[]>([]);
+    const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+    const [historicoDatasAnteriores, setHistoricoDatasAnteriores] = useState<string[]>([]);
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro" | "info"; texto: string } | null>(null);
     const [editandoId, setEditandoId] = useState<string | number | null>(null);
     const [financeiroIndividualId, setFinanceiroIndividualId] = useState<string | number | null>(null);
@@ -52,11 +61,13 @@ function AgendamentoContent() {
     useEffect(() => {
         if (profile?.unit_id) {
             setFiltroEmpresaId(profile.unit_id);
+            setHistoricoFiltroEmpresaId(profile.unit_id);
         } else {
             // Se não tiver unidade fixa, tenta recuperar a última selecionada do localStorage
             const savedUnit = localStorage.getItem('last_selected_unit');
             if (savedUnit) {
                 setFiltroEmpresaId(Number(savedUnit));
+                setHistoricoFiltroEmpresaId(Number(savedUnit));
             }
         }
     }, [profile]);
@@ -156,6 +167,106 @@ function AgendamentoContent() {
     useEffect(() => {
         if (filtroEmpresaId > 0 && filtroData) fetchAgendamentos();
     }, [filtroEmpresaId, filtroData, fetchAgendamentos]);
+
+    // Debounce para o nome do paciente no histórico
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setHistoricoFiltroPacienteDebounced(historicoFiltroPaciente);
+        }, 400);
+        return () => clearTimeout(handler);
+    }, [historicoFiltroPaciente]);
+
+    const fetchHistorico = useCallback(async () => {
+        setCarregandoHistorico(true);
+        const hojeStr = new Date().toISOString().split("T")[0];
+        
+        let query = supabase
+            .from('agendamentos')
+            .select('*, pacientes!inner(*)')
+            .lt('data', hojeStr);
+
+        if (historicoFiltroEmpresaId > 0) {
+            query = query.eq('empresa_id', historicoFiltroEmpresaId);
+        }
+        if (historicoFiltroData) {
+            query = query.eq('data', historicoFiltroData);
+        }
+        if (historicoFiltroPacienteDebounced) {
+            query = query.ilike('pacientes.nome', `%${historicoFiltroPacienteDebounced}%`);
+        }
+
+        // Limita a 50 registros se não houver filtro ativo de data ou nome para não sobrecarregar
+        if (!historicoFiltroData && !historicoFiltroPacienteDebounced) {
+            query = query.limit(50);
+        }
+
+        query = query.order('data', { ascending: false }).order('hora', { ascending: false });
+
+        const { data, error } = await query;
+
+        if (!error && data) {
+            const adapted: Consulta[] = data.map((a: any) => ({
+                id: a.id, empresaId: a.empresa_id, data: a.data,
+                hora: a.hora.substring(0, 5), pacienteId: a.paciente_id,
+                pacienteNome: a.pacientes?.nome || 'Desconhecido',
+                tipo: a.tipo as any, status: a.status as any
+            }));
+            setHistoricoResultados(adapted);
+        } else {
+            console.error("Erro ao buscar histórico:", error);
+        }
+        setCarregandoHistorico(false);
+    }, [historicoFiltroEmpresaId, historicoFiltroData, historicoFiltroPacienteDebounced]);
+
+    useEffect(() => {
+        if (view === "historico") {
+            fetchHistorico();
+        }
+    }, [view, fetchHistorico]);
+
+    const fetchHistoricoDatasAnteriores = useCallback(async () => {
+        const hojeStr = new Date().toISOString().split("T")[0];
+        try {
+            let query = supabase
+                .from('agendamentos')
+                .select('data')
+                .lt('data', hojeStr)
+                .neq('status', 'cancelado');
+            
+            if (historicoFiltroEmpresaId > 0) {
+                query = query.eq('empresa_id', historicoFiltroEmpresaId);
+            }
+            
+            query = query.order('data', { ascending: false });
+            
+            const { data, error } = await query;
+            if (!error && data) {
+                const uniqueDates = Array.from(new Set(data.map((item: any) => item.data))) as string[];
+                setHistoricoDatasAnteriores(uniqueDates);
+            }
+        } catch (err) {
+            console.error("Erro ao buscar datas do histórico:", err);
+        }
+    }, [historicoFiltroEmpresaId]);
+
+    useEffect(() => {
+        if (view === "historico") {
+            fetchHistoricoDatasAnteriores();
+        }
+    }, [view, historicoFiltroEmpresaId, fetchHistoricoDatasAnteriores]);
+
+    const historicoDatasFormatadas = useMemo(() => {
+        return historicoDatasAnteriores.map(dataStr => {
+            const dateObj = new Date(dataStr + "T12:00:00");
+            const label = dateObj.toLocaleDateString("pt-BR", {
+                weekday: "short", day: "2-digit", month: "2-digit", year: "numeric"
+            }).toUpperCase();
+            return {
+                value: dataStr,
+                label: label
+            };
+        });
+    }, [historicoDatasAnteriores]);
 
     // Derived data
     const unidades = useMemo(() => listaEmpresas.filter(e => 
@@ -427,6 +538,68 @@ function AgendamentoContent() {
         imprimirRelatorioListaOperacional(dadosRelatorio);
     };
 
+    const handleImprimirHistorico = async () => {
+        const empresa = listaEmpresas.find(e => e.id === historicoFiltroEmpresaId);
+        const unidadeNome = empresa ? empresa.nomeFantasia : "TODAS AS UNIDADES";
+
+        let periodo = "GERAL (ÚLTIMOS 50 REGISTROS)";
+        if (historicoFiltroData) {
+            periodo = `DATA: ${new Date(historicoFiltroData + "T12:00:00").toLocaleDateString('pt-BR')}`;
+        } else if (historicoFiltroPacienteDebounced) {
+            periodo = `BUSCA POR PACIENTE: ${historicoFiltroPacienteDebounced.toUpperCase()}`;
+        }
+
+        try {
+            const hojeStr = new Date().toISOString().split("T")[0];
+            let query = supabase
+                .from('agendamentos')
+                .select('*, pacientes!inner(nome, telefone), empresas(nome_fantasia)')
+                .lt('data', hojeStr);
+
+            if (historicoFiltroEmpresaId > 0) {
+                query = query.eq('empresa_id', historicoFiltroEmpresaId);
+            }
+            if (historicoFiltroData) {
+                query = query.eq('data', historicoFiltroData);
+            }
+            if (historicoFiltroPacienteDebounced) {
+                query = query.ilike('pacientes.nome', `%${historicoFiltroPacienteDebounced}%`);
+            }
+
+            if (!historicoFiltroData && !historicoFiltroPacienteDebounced) {
+                query = query.limit(50);
+            }
+
+            query = query.order('data', { ascending: false }).order('hora', { ascending: false });
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            if (data) {
+                const dadosRelatorio: ReportHistoricoData = {
+                    titulo: "RELATÓRIO DE HISTÓRICO DE AGENDAMENTOS",
+                    periodo,
+                    unidade: unidadeNome,
+                    operador: profile?.nome || "ADMIN",
+                    registros: data.map((item: any) => ({
+                        data: new Date(item.data + "T12:00:00").toLocaleDateString('pt-BR'),
+                        hora: item.hora.substring(0, 5),
+                        pacienteNome: item.pacientes?.nome || 'Desconhecido',
+                        telefone: item.pacientes?.telefone || '',
+                        medico: '',
+                        filial: item.empresas?.nome_fantasia || 'Desconhecida',
+                        tipo: item.tipo || '',
+                        status: item.status || ''
+                    }))
+                };
+                imprimirRelatorioHistorico(dadosRelatorio);
+            }
+        } catch (err) {
+            console.error("Erro ao gerar relatório do histórico:", err);
+            mostrarMensagemFn("erro", "ERRO AO GERAR RELATÓRIO DO HISTÓRICO");
+        }
+    };
+
     const getDiaSemana = (dataStr: string) => {
         const data = new Date(dataStr + "T12:00:00");
         return data.toLocaleDateString("pt-BR", { weekday: "long" }).replace(/^\w/, (c) => c.toUpperCase());
@@ -439,10 +612,10 @@ function AgendamentoContent() {
                 <div className="border-b border-gray-800 pb-4 flex items-center justify-between">
                     <div>
                         <h1 className="text-xl font-bold tracking-wide text-white">
-                            {view === "agenda" ? "AGENDAMENTO" : financeiroIndividualId ? `Financeiro - ${registrosFin[0]?.pacienteNome || 'Paciente'}` : `Registros Financeiros - ${getDiaSemana(filtroData)}`}
+                            {view === "agenda" ? "AGENDAMENTO" : view === "historico" ? "HISTÓRICO DE AGENDAMENTOS" : financeiroIndividualId ? `Financeiro - ${registrosFin[0]?.pacienteNome || 'Paciente'}` : `Registros Financeiros - ${getDiaSemana(filtroData)}`}
                         </h1>
                         <p className="text-sm text-gray-500 mt-1">
-                            {view === "agenda" ? "Controle de consultas e exames" : financeiroIndividualId ? "Lançamento financeiro do paciente" : "Lançamento financeiro diário"}
+                            {view === "agenda" ? "Controle de consultas e exames" : view === "historico" ? "Consulta de atendimentos anteriores" : financeiroIndividualId ? "Lançamento financeiro do paciente" : "Lançamento financeiro diário"}
                         </p>
                     </div>
                     <div className="flex gap-2">
@@ -457,9 +630,20 @@ function AgendamentoContent() {
                                 FINANCEIRO DO DIA
                             </button>
                         )}
+                        {view === "agenda" && !mostrarForm && (
+                            <button onClick={() => setView("historico")} className="px-4 py-2 bg-gray-800 border border-gray-700 text-sm font-medium text-white hover:bg-gray-700">
+                                HISTÓRICO
+                            </button>
+                        )}
                         {view === "financeiro" && !financeiroIndividualId && (
                             <button onClick={handleImprimirAgendamentoCompleto} className="px-4 py-2 bg-green-900 border border-green-700 text-sm font-medium text-white hover:bg-green-800">
                                 IMPRIMIR RESUMO COMPLETO
+                            </button>
+                        )}
+                        {view === "historico" && (
+                            <button onClick={handleImprimirHistorico} className="px-4 py-2 bg-purple-900 border border-purple-700 text-sm font-medium text-white hover:bg-purple-800 flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                                IMPRIMIR HISTÓRICO
                             </button>
                         )}
                         {!mostrarForm ? (
@@ -516,7 +700,7 @@ function AgendamentoContent() {
                 )}
 
                 {/* Filtros */}
-                {!mostrarForm && !financeiroIndividualId && (
+                {!mostrarForm && !financeiroIndividualId && view !== "historico" && (
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-end bg-gray-900 border border-gray-800 p-3 sm:p-4">
                         <div className="flex-1 min-w-0 sm:w-64">
                             <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">UNIDADE</label>
@@ -581,7 +765,7 @@ function AgendamentoContent() {
                         onReagendar={handleReagendar}
                         onAbrirFinanceiroIndividual={handleAbrirFinanceiroIndividual}
                     />
-                ) : (
+                ) : view === "financeiro" ? (
                     <AgendaFinanceiro
                         registrosFin={registrosFin}
                         onUpdateRegistro={handleUpdateRegistro}
@@ -591,6 +775,133 @@ function AgendamentoContent() {
                         onSalvarFinanceiro={handleSalvarFinanceiro}
                         financeiroIndividualId={financeiroIndividualId}
                     />
+                ) : (
+                    <div className="space-y-4">
+                        {/* Filtros do Histórico */}
+                        <div className="flex flex-col md:flex-row gap-3 md:gap-4 items-stretch md:items-end bg-gray-900 border border-gray-800 p-3 md:p-4">
+                            <div className="flex-1 min-w-0 md:w-64">
+                                <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">BUSCAR PACIENTE</label>
+                                <input
+                                    type="text"
+                                    value={historicoFiltroPaciente}
+                                    onChange={(e) => setHistoricoFiltroPaciente(e.target.value)}
+                                    placeholder="Digite o nome do paciente..."
+                                    className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none placeholder-gray-500"
+                                />
+                            </div>
+                            <div className="flex-1 min-w-0 md:w-64">
+                                <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">FILIAL / UNIDADE</label>
+                                <select
+                                    value={historicoFiltroEmpresaId}
+                                    disabled={!!profile?.unit_id}
+                                    onChange={(e) => setHistoricoFiltroEmpresaId(Number(e.target.value))}
+                                    className={`w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none ${profile?.unit_id ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                >
+                                    {!profile?.unit_id && <option value={0}>Todas as unidades</option>}
+                                    {unidades.map(u => (<option key={u.id} value={u.id}>{u.label}</option>))}
+                                </select>
+                            </div>
+                            <div className="flex-1 min-w-0 md:w-56">
+                                <label className="text-[10px] text-gray-500 block mb-1 font-black uppercase tracking-widest">DATA DO HISTÓRICO</label>
+                                <select
+                                    value={historicoFiltroData}
+                                    onChange={(e) => setHistoricoFiltroData(e.target.value)}
+                                    className="w-full px-2 py-1.5 bg-gray-800 border border-gray-700 text-sm text-white focus:border-green-500 focus:outline-none"
+                                >
+                                    <option value="">Selecione uma data anterior</option>
+                                    {historicoDatasFormatadas.map(d => (
+                                        <option key={d.value} value={d.value}>{d.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setHistoricoFiltroPaciente("");
+                                    if (!profile?.unit_id) setHistoricoFiltroEmpresaId(0);
+                                    setHistoricoFiltroData("");
+                                }}
+                                className="px-4 py-2 bg-gray-800 border border-gray-700 text-xs font-bold text-gray-400 hover:text-white transition-colors"
+                            >
+                                LIMPAR
+                            </button>
+                        </div>
+
+                        {/* Tabela do Histórico */}
+                        <div className="bg-transparent lg:bg-gray-900 lg:border lg:border-gray-800">
+                            {/* Mobile View: Cards */}
+                            <div className="lg:hidden space-y-3">
+                                {carregandoHistorico ? (
+                                    <div className="p-8 text-center text-gray-500 text-sm">Carregando histórico...</div>
+                                ) : historicoResultados.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-500 text-sm bg-gray-900 border border-gray-800">Nenhum agendamento encontrado no histórico.</div>
+                                ) : (
+                                    historicoResultados.map((consulta) => {
+                                        const empresa = listaEmpresas.find(e => e.id === consulta.empresaId);
+                                        return (
+                                            <div key={consulta.id} className="bg-gray-900 border-l-4 p-4 shadow-sm border-gray-800 border-l-gray-600">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="font-mono text-emerald-500 font-bold">
+                                                        {new Date(consulta.data + "T12:00:00").toLocaleDateString('pt-BR')} às {consulta.hora}
+                                                    </div>
+                                                    <span className="px-2 py-0.5 text-xs font-bold border bg-blue-500/20 text-blue-500 border-blue-500/50">
+                                                        {consulta.status?.toUpperCase() || "DESCONHECIDO"}
+                                                    </span>
+                                                </div>
+                                                <div className="text-white font-bold mb-1 uppercase tracking-tight">{consulta.pacienteNome}</div>
+                                                <div className="text-xs text-gray-400 mb-1">Filial: {empresa ? empresa.nomeFantasia : "Desconhecida"}</div>
+                                                <div className="text-xs text-gray-500">{consulta.tipo}</div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+
+                            {/* Desktop View: Table */}
+                            <table className="w-full hidden lg:table">
+                                <thead>
+                                    <tr className="border-b border-gray-800 text-left">
+                                        <th className="px-4 py-3 text-xs font-bold text-gray-500 w-28 tracking-widest">DATA</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-gray-500 w-20 tracking-widest">HORA</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-gray-500 tracking-widest">PACIENTE</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-gray-500 w-56 tracking-widest">FILIAL / UNIDADE</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-gray-500 w-28 tracking-widest">TIPO</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-gray-500 w-32 tracking-widest">STATUS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {carregandoHistorico ? (
+                                        <tr>
+                                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-sm">Carregando histórico...</td>
+                                        </tr>
+                                    ) : historicoResultados.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-sm">Nenhum agendamento encontrado no histórico.</td>
+                                        </tr>
+                                    ) : (
+                                        historicoResultados.map((consulta) => {
+                                            const empresa = listaEmpresas.find(e => e.id === consulta.empresaId);
+                                            return (
+                                                <tr key={consulta.id} className="border-b border-gray-800/50 hover:bg-white/2 transition-colors">
+                                                    <td className="px-4 py-4 text-sm font-mono text-gray-300">
+                                                        {new Date(consulta.data + "T12:00:00").toLocaleDateString('pt-BR')}
+                                                    </td>
+                                                    <td className="px-4 py-4 text-sm font-mono text-emerald-500 font-bold">{consulta.hora}</td>
+                                                    <td className="px-4 py-4 text-sm text-gray-200 font-medium uppercase tracking-tight">{consulta.pacienteNome}</td>
+                                                    <td className="px-4 py-4 text-sm text-gray-400 uppercase tracking-tight">{empresa ? empresa.nomeFantasia : "Desconhecida"}</td>
+                                                    <td className="px-4 py-4 text-xs text-gray-500 font-bold">{consulta.tipo}</td>
+                                                    <td className="px-4 py-4">
+                                                        <span className="px-2 py-0.5 text-xs font-bold border bg-blue-500/20 text-blue-500 border-blue-500/50">
+                                                            {consulta.status?.toUpperCase() || "DESCONHECIDO"}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 )}
             </div>
         </MainLayout>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import MainLayout from "@/components/MainLayout";
 import { supabase } from "@/lib/supabase";
 
@@ -38,6 +38,7 @@ export default function DespesasFixasPage() {
     const [categorias, setCategorias] = useState<Categoria[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [sugestoesCredores, setSugestoesCredores] = useState<string[]>([]);
     const [editandoId, setEditandoId] = useState<number | null>(null);
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
 
@@ -56,6 +57,14 @@ export default function DespesasFixasPage() {
         observacoes: "",
     });
 
+    const [mostrarSugestoesCredor, setMostrarSugestoesCredor] = useState(false);
+
+    const filteredCredores = useMemo(() => {
+        if (!form.credor || form.credor.trim().length < 1) return [];
+        const term = form.credor.toLowerCase();
+        return sugestoesCredores.filter((c) => c.toLowerCase().includes(term)).slice(0, 8);
+    }, [form.credor, sugestoesCredores]);
+
     useEffect(() => {
         fetchRefs();
         fetchData();
@@ -65,6 +74,15 @@ export default function DespesasFixasPage() {
         fetchData();
     }, [filtros]);
 
+    const fetchSugestoesCredores = async () => {
+        const { data } = await supabase.from("despesas_fixas").select("credor");
+        if (data) {
+            const unique = Array.from(new Set(data.map((d: any) => d.credor).filter(Boolean))) as string[];
+            unique.sort((a, b) => a.localeCompare(b));
+            setSugestoesCredores(unique);
+        }
+    };
+
     const fetchRefs = async () => {
         const [empRes, catRes] = await Promise.all([
             supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
@@ -72,6 +90,7 @@ export default function DespesasFixasPage() {
         ]);
         if (empRes.data) setEmpresas(empRes.data);
         if (catRes.data) setCategorias(catRes.data);
+        fetchSugestoesCredores();
     };
 
     const fetchData = async () => {
@@ -110,6 +129,7 @@ export default function DespesasFixasPage() {
                 setMensagem({ tipo: "sucesso", texto: "Despesa atualizada" });
                 resetForm();
                 fetchData();
+                fetchSugestoesCredores();
             }
         } else {
             const { error } = await supabase.from("despesas_fixas").insert(dados);
@@ -119,6 +139,7 @@ export default function DespesasFixasPage() {
                 setMensagem({ tipo: "sucesso", texto: "Despesa adicionada" });
                 resetForm();
                 fetchData();
+                fetchSugestoesCredores();
             }
         }
     };
@@ -167,6 +188,7 @@ export default function DespesasFixasPage() {
         if (!error) {
             setMensagem({ tipo: "sucesso", texto: "Despesa excluída" });
             fetchData();
+            fetchSugestoesCredores();
         }
     };
 
@@ -217,7 +239,34 @@ export default function DespesasFixasPage() {
                 {showForm && (
                     <div className="bg-gray-900 border border-gray-800 p-4 mb-4">
                         <div className="grid grid-cols-4 gap-4 mb-4">
-                            <input type="text" placeholder="Credor *" value={form.credor} onChange={(e) => setForm({ ...form, credor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    placeholder="Credor *" 
+                                    value={form.credor} 
+                                    onChange={(e) => setForm({ ...form, credor: e.target.value })} 
+                                    onFocus={() => setMostrarSugestoesCredor(true)}
+                                    onBlur={() => setTimeout(() => setMostrarSugestoesCredor(false), 200)}
+                                    autoComplete="off"
+                                    className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm w-full" 
+                                />
+                                {mostrarSugestoesCredor && filteredCredores.length > 0 && (
+                                    <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 max-h-48 overflow-y-auto rounded-md shadow-lg">
+                                        {filteredCredores.map((credor) => (
+                                            <div
+                                                key={credor}
+                                                onClick={() => {
+                                                    setForm({ ...form, credor });
+                                                    setMostrarSugestoesCredor(false);
+                                                }}
+                                                className="px-3 py-2 cursor-pointer hover:bg-gray-800 text-sm text-white border-b border-gray-800 last:border-0 text-left"
+                                            >
+                                                {credor}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                             <input type="text" placeholder="Valor *" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
                             <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">
                                 <option value="">Empresa...</option>

@@ -309,8 +309,28 @@ export default function AgendamentoForm({
     }, [empresas]);
 
     const datasDisponiveis = useMemo(() => {
-        return gerarDatasDisponiveis(empresaSelecionada?.configuracaoHorarios);
-    }, [empresaSelecionada]);
+        const list = gerarDatasDisponiveis(empresaSelecionada?.configuracaoHorarios);
+        if (editandoId) {
+            const agendamento = agenda.find(c => c.id === editandoId);
+            if (agendamento && agendamento.empresaId === formData.empresaId) {
+                const dataAgendamento = agendamento.data;
+                const listValues = new Set(list.map(d => d.value));
+                if (!listValues.has(dataAgendamento)) {
+                    const dateObj = new Date(dataAgendamento + "T12:00:00");
+                    const label = dateObj.toLocaleDateString("pt-BR", {
+                        weekday: "short", day: "2-digit", month: "2-digit", year: "numeric"
+                    }).toUpperCase();
+                    list.unshift({
+                        value: dataAgendamento,
+                        label: `${label} (ANTERIOR)`,
+                        medico: undefined,
+                        medico_id: undefined
+                    });
+                }
+            }
+        }
+        return list;
+    }, [empresaSelecionada, editandoId, formData.empresaId, agenda]);
 
     const horariosDisponiveis = useMemo(() => {
         return gerarHorariosDisponiveis(empresaSelecionada?.configuracaoHorarios);

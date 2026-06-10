@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import MainLayout from "@/components/MainLayout";
 import { supabase } from "@/lib/supabase";
 
@@ -37,6 +37,7 @@ export default function DespesasDiversasPage() {
     const [categorias, setCategorias] = useState<Categoria[]>([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
+    const [sugestoesNomes, setSugestoesNomes] = useState<string[]>([]);
     const [editandoId, setEditandoId] = useState<number | null>(null);
     const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
 
@@ -58,6 +59,14 @@ export default function DespesasDiversasPage() {
         observacao: "",
     });
 
+    const [mostrarSugestoesNome, setMostrarSugestoesNome] = useState(false);
+
+    const filteredNomes = useMemo(() => {
+        if (!form.nome || form.nome.trim().length < 1) return [];
+        const term = form.nome.toLowerCase();
+        return sugestoesNomes.filter((n) => n.toLowerCase().includes(term)).slice(0, 8);
+    }, [form.nome, sugestoesNomes]);
+
     useEffect(() => {
         fetchRefs();
     }, []);
@@ -66,6 +75,15 @@ export default function DespesasDiversasPage() {
         fetchData();
     }, [filtros]);
 
+    const fetchSugestoesNomes = async () => {
+        const { data } = await supabase.from("despesas_diversas").select("nome");
+        if (data) {
+            const unique = Array.from(new Set(data.map((d: any) => d.nome).filter(Boolean))) as string[];
+            unique.sort((a, b) => a.localeCompare(b));
+            setSugestoesNomes(unique);
+        }
+    };
+
     const fetchRefs = async () => {
         const [empRes, catRes] = await Promise.all([
             supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
@@ -73,6 +91,7 @@ export default function DespesasDiversasPage() {
         ]);
         if (empRes.data) setEmpresas(empRes.data);
         if (catRes.data) setCategorias(catRes.data);
+        fetchSugestoesNomes();
     };
 
     const fetchData = async () => {
@@ -116,6 +135,7 @@ export default function DespesasDiversasPage() {
                 setMensagem({ tipo: "sucesso", texto: "Despesa atualizada" });
                 resetForm();
                 fetchData();
+                fetchSugestoesNomes();
             }
         } else {
             const { error } = await supabase.from("despesas_diversas").insert(dados);
@@ -125,6 +145,7 @@ export default function DespesasDiversasPage() {
                 setMensagem({ tipo: "sucesso", texto: "Despesa adicionada" });
                 resetForm();
                 fetchData();
+                fetchSugestoesNomes();
             }
         }
     };
@@ -156,6 +177,7 @@ export default function DespesasDiversasPage() {
         if (!error) {
             setMensagem({ tipo: "sucesso", texto: "Despesa excluída" });
             fetchData();
+            fetchSugestoesNomes();
         }
     };
 
@@ -207,7 +229,34 @@ export default function DespesasDiversasPage() {
                 {showForm && (
                     <div className="bg-gray-900 border border-gray-800 p-4 mb-4">
                         <div className="grid grid-cols-4 gap-4 mb-4">
-                            <input type="text" placeholder="Nome/Descrição" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    placeholder="Nome/Descrição" 
+                                    value={form.nome} 
+                                    onChange={(e) => setForm({ ...form, nome: e.target.value })} 
+                                    onFocus={() => setMostrarSugestoesNome(true)}
+                                    onBlur={() => setTimeout(() => setMostrarSugestoesNome(false), 200)}
+                                    autoComplete="off"
+                                    className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm w-full" 
+                                />
+                                {mostrarSugestoesNome && filteredNomes.length > 0 && (
+                                    <div className="absolute z-50 w-full mt-1 bg-gray-900 border border-gray-700 max-h-48 overflow-y-auto rounded-md shadow-lg">
+                                        {filteredNomes.map((nome) => (
+                                            <div
+                                                key={nome}
+                                                onClick={() => {
+                                                    setForm({ ...form, nome });
+                                                    setMostrarSugestoesNome(false);
+                                                }}
+                                                className="px-3 py-2 cursor-pointer hover:bg-gray-800 text-sm text-white border-b border-gray-800 last:border-0 text-left"
+                                            >
+                                                {nome}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                             <input type="text" placeholder="Valor *" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm" />
                             <input type="date" value={form.data} onChange={(e) => setForm({ ...form, data: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm scheme-dark" />
                             <select value={form.empresa_id} onChange={(e) => setForm({ ...form, empresa_id: e.target.value })} className="bg-gray-800 border border-gray-700 text-white px-3 py-2 text-sm">

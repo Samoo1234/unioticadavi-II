@@ -48,6 +48,7 @@ export default function AgendaCalendar({
     onAbrirFinanceiroIndividual,
 }: AgendaCalendarProps) {
     const { profile } = useAuth();
+    const hoje = new Date().toISOString().split("T")[0];
 
     return (
         <div className="bg-transparent lg:bg-gray-900 lg:border lg:border-gray-800">
@@ -58,54 +59,59 @@ export default function AgendaCalendar({
                 ) : agenda.length === 0 ? (
                     <div className="p-8 text-center text-gray-500 text-sm bg-gray-900 border border-gray-800">Nenhum agendamento.</div>
                 ) : (
-                    agenda.map((consulta) => (
-                        <div key={consulta.id} className={`bg-gray-900 border-l-4 p-4 shadow-sm border-gray-800 ${consulta.status === 'confirmado' ? 'border-l-green-600' :
-                            consulta.status === 'aguardando' ? 'border-l-yellow-600' :
-                                consulta.status === 'atrasado' ? 'border-l-red-600' : 'border-l-gray-600'
-                            } ${consulta.status === 'cancelado' ? 'opacity-60' : ''}`}>
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="font-mono text-emerald-500 font-bold">{consulta.hora}</div>
-                                <StatusBadge status={consulta.status} />
-                            </div>
-                            <div className="text-white font-bold mb-1 uppercase tracking-tight">{consulta.pacienteNome}</div>
-                            <div className="text-xs text-gray-500 mb-4">{consulta.tipo}</div>
-
-                            {consulta.status !== "cancelado" && (
-                                <div className="flex flex-wrap gap-2">
-                                    {(profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
-                                        <button
-                                            onClick={() => onAbrirFinanceiroIndividual(consulta)}
-                                            className="flex-1 py-1.5 text-[10px] font-black bg-blue-600/10 border border-blue-600/30 text-blue-500 hover:bg-blue-600/20"
-                                        >
-                                            FINANCEIRO
-                                        </button>
-                                    )}
-                                    {consulta.status !== "confirmado" && (
-                                        <button
-                                            onClick={() => onConfirmar(consulta.id)}
-                                            className="flex-1 py-1.5 text-[10px] font-black bg-green-600/10 border border-green-600/30 text-green-500 hover:bg-green-600/20"
-                                        >
-                                            OK
-                                        </button>
-                                    )}
-                                    {consulta.status !== "confirmado" && (
-                                        <button
-                                            onClick={() => onReagendar(consulta.id)}
-                                            className="flex-1 py-1.5 text-[10px] font-black bg-yellow-600/10 border border-yellow-600/30 text-yellow-500 hover:bg-yellow-600/20"
-                                        >
-                                            REAGER.
-                                        </button>
-                                    )}
-                                    <button
-                                        onClick={() => onCancelar(consulta.id)}
-                                        className="flex-1 py-1.5 text-[10px] font-black bg-red-600/10 border border-red-600/30 text-red-500 hover:bg-red-600/20"
-                                    >
-                                        CANCEL.
-                                    </button>
+                    agenda.map((consulta) => {
+                        const isPast = consulta.data < hoje;
+                        return (
+                            <div key={consulta.id} className={`bg-gray-900 border-l-4 p-4 shadow-sm border-gray-800 ${consulta.status === 'confirmado' ? 'border-l-green-600' :
+                                consulta.status === 'aguardando' ? 'border-l-yellow-600' :
+                                    consulta.status === 'atrasado' ? 'border-l-red-600' : 'border-l-gray-600'
+                                } ${consulta.status === 'cancelado' ? 'opacity-60' : ''}`}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="font-mono text-emerald-500 font-bold">{consulta.hora}</div>
+                                    <StatusBadge status={consulta.status} />
                                 </div>
-                            )}
-                        </div>
-                    ))
+                                <div className="text-white font-bold mb-1 uppercase tracking-tight">{consulta.pacienteNome}</div>
+                                <div className="text-xs text-gray-500 mb-4">{consulta.tipo}</div>
+
+                                {consulta.status !== "cancelado" && (
+                                    <div className="flex flex-wrap gap-2">
+                                        {(profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
+                                            <button
+                                                onClick={() => onAbrirFinanceiroIndividual(consulta)}
+                                                className="flex-1 py-1.5 text-[10px] font-black bg-blue-600/10 border border-blue-600/30 text-blue-500 hover:bg-blue-600/20"
+                                            >
+                                                FINANCEIRO
+                                            </button>
+                                        )}
+                                        {consulta.status !== "confirmado" && !isPast && (
+                                            <button
+                                                onClick={() => onConfirmar(consulta.id)}
+                                                className="flex-1 py-1.5 text-[10px] font-black bg-green-600/10 border border-green-600/30 text-green-500 hover:bg-green-600/20"
+                                            >
+                                                OK
+                                            </button>
+                                        )}
+                                        {consulta.status !== "confirmado" && !isPast && (
+                                            <button
+                                                onClick={() => onReagendar(consulta.id)}
+                                                className="flex-1 py-1.5 text-[10px] font-black bg-yellow-600/10 border border-yellow-600/30 text-yellow-500 hover:bg-yellow-600/20"
+                                            >
+                                                REAGER.
+                                            </button>
+                                        )}
+                                        {!isPast && (
+                                            <button
+                                                onClick={() => onCancelar(consulta.id)}
+                                                className="flex-1 py-1.5 text-[10px] font-black bg-red-600/10 border border-red-600/30 text-red-500 hover:bg-red-600/20"
+                                            >
+                                                CANCEL.
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
                 )}
             </div>
 
@@ -130,38 +136,43 @@ export default function AgendaCalendar({
                             <td colSpan={5} className="px-4 py-8 text-center text-gray-500 text-sm">Nenhum agendamento.</td>
                         </tr>
                     ) : (
-                        agenda.map((consulta) => (
-                            <tr key={consulta.id} className={`border-b border-gray-800/50 hover:bg-white/2 transition-colors ${consulta.status === "cancelado" ? "opacity-40" : ""}`}>
-                                <td className="px-4 py-4 text-sm font-mono text-emerald-500 font-bold">{consulta.hora}</td>
-                                <td className="px-4 py-4 text-sm text-gray-200 font-medium uppercase tracking-tight">{consulta.pacienteNome}</td>
-                                <td className="px-4 py-4 text-xs text-gray-500 font-bold">{consulta.tipo}</td>
-                                <td className="px-4 py-4"><StatusBadge status={consulta.status} /></td>
-                                <td className="px-4 py-4">
-                                    {consulta.status !== "cancelado" && (
-                                        <div className="flex justify-center gap-1.5">
-                                            {(profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
-                                                <button onClick={() => onAbrirFinanceiroIndividual(consulta)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Financeiro">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                </button>
-                                            )}
-                                            {consulta.status !== "confirmado" && (
-                                                <button onClick={() => onConfirmar(consulta.id)} className="p-2 text-green-500 hover:bg-green-500/10 rounded-lg transition-colors" title="Confirmar">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                                                </button>
-                                            )}
-                                            {consulta.status !== "confirmado" && (
-                                                <button onClick={() => onReagendar(consulta.id)} className="p-2 text-yellow-500 hover:bg-yellow-500/10 rounded-lg transition-colors" title="Reagendar">
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                                </button>
-                                            )}
-                                            <button onClick={() => onCancelar(consulta.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Cancelar">
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                                            </button>
-                                        </div>
-                                    )}
-                                </td>
-                            </tr>
-                        ))
+                        agenda.map((consulta) => {
+                            const isPast = consulta.data < hoje;
+                            return (
+                                <tr key={consulta.id} className={`border-b border-gray-800/50 hover:bg-white/2 transition-colors ${consulta.status === "cancelado" ? "opacity-40" : ""}`}>
+                                    <td className="px-4 py-4 text-sm font-mono text-emerald-500 font-bold">{consulta.hora}</td>
+                                    <td className="px-4 py-4 text-sm text-gray-200 font-medium uppercase tracking-tight">{consulta.pacienteNome}</td>
+                                    <td className="px-4 py-4 text-xs text-gray-500 font-bold">{consulta.tipo}</td>
+                                    <td className="px-4 py-4"><StatusBadge status={consulta.status} /></td>
+                                    <td className="px-4 py-4">
+                                        {consulta.status !== "cancelado" && (
+                                            <div className="flex justify-center gap-1.5">
+                                                {(profile?.roles?.name === 'Administrador' || profile?.roles?.name === 'Vendedor') && (
+                                                    <button onClick={() => onAbrirFinanceiroIndividual(consulta)} className="p-2 text-blue-500 hover:bg-blue-500/10 rounded-lg transition-colors" title="Financeiro">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                    </button>
+                                                )}
+                                                {consulta.status !== "confirmado" && !isPast && (
+                                                    <button onClick={() => onConfirmar(consulta.id)} className="p-2 text-green-500 hover:bg-green-500/10 rounded-lg transition-colors" title="Confirmar">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                                    </button>
+                                                )}
+                                                {consulta.status !== "confirmado" && !isPast && (
+                                                    <button onClick={() => onReagendar(consulta.id)} className="p-2 text-yellow-500 hover:bg-yellow-500/10 rounded-lg transition-colors" title="Reagendar">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                                    </button>
+                                                )}
+                                                {!isPast && (
+                                                    <button onClick={() => onCancelar(consulta.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Cancelar">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })
                     )}
                 </tbody>
             </table>
