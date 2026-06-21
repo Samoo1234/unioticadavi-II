@@ -177,9 +177,24 @@ export default function DespesasFixasPage() {
     };
 
     const handleToggleStatus = async (id: number, status: string) => {
-        const novoStatus = status === "ativo" ? "inativo" : "ativo";
-        const { error } = await supabase.from("despesas_fixas").update({ status: novoStatus }).eq("id", id);
-        if (!error) fetchData();
+        let novoStatus: string;
+        const updates: any = {};
+
+        if (status === "pago") {
+            if (!confirm("Deseja reativar esta despesa (alterar para ativa e remover data de pagamento)?")) return;
+            novoStatus = "ativo";
+            updates.data_pagamento = null;
+        } else {
+            novoStatus = status === "ativo" ? "inativo" : "ativo";
+        }
+
+        updates.status = novoStatus;
+
+        const { error } = await supabase.from("despesas_fixas").update(updates).eq("id", id);
+        if (!error) {
+            setMensagem({ tipo: "sucesso", texto: status === "pago" ? "Despesa reativada com sucesso" : "Status atualizado" });
+            fetchData();
+        }
     };
 
     const handleExcluir = async (id: number) => {
@@ -292,11 +307,11 @@ export default function DespesasFixasPage() {
                 )}
 
                 {/* Lista */}
-                <div className="flex-1 bg-gray-900 border border-gray-800 overflow-auto">
-                    {loading ? (
+                <div className="flex-1 bg-gray-900 border border-gray-800 overflow-auto relative">
+                    {loading && despesas.length === 0 ? (
                         <div className="p-4 text-gray-500 text-sm">Carregando...</div>
                     ) : (
-                        <table className="w-full">
+                        <table className={`w-full transition-opacity duration-200 ${loading ? "opacity-50 pointer-events-none" : "opacity-100"}`}>
                             <thead className="bg-gray-800 sticky top-0">
                                 <tr>
                                     <th className="text-left text-xs text-gray-400 font-medium px-4 py-3">CREDOR</th>
