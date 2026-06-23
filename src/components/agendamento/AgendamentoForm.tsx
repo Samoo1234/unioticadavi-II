@@ -33,8 +33,11 @@ const EXAMES_DISPONIVEIS: ExamOption[] = [
     { nome: "Retinografia", valor: 200.00 },
     { nome: "Pré de Catarata (topog. Córnea + Biometria ultrassônica)", valor: 500.00 },
     { nome: "Pterígio", valor: 1500.00 },
-    { nome: "Ultrassom", valor: 400.00 }
+    { nome: "Ultrassom", valor: 400.00 },
+    { nome: "Yag Laser (1 olho)", valor: 400.00 },
+    { nome: "Yag Laser (2 olhos)", valor: 800.00 }
 ];
+
 
 function adicionarMinutos(horario: string, minutos: number): string {
     const [h, m] = horario.split(":").map(Number);
