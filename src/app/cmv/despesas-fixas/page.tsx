@@ -52,6 +52,9 @@ interface DespesaFixa {
     valor_pago: number | null;
     recorrencia_grupo_id: string | null;
     conta_pagamento_id: number | null;
+    desconto?: number;
+    juros?: number;
+    multa?: number;
     empresas?: Empresa;
     categorias?: Categoria;
     contas_pagamento?: ContaPagamento;
@@ -89,6 +92,9 @@ export default function DespesasFixasPage() {
     const [pagandoId, setPagandoId] = useState<number | null>(null);
     const [pagandoValor, setPagandoValor] = useState<string>("");
     const [pagandoContaId, setPagandoContaId] = useState<string>("");
+    const [pagandoDesconto, setPagandoDesconto] = useState<string>("0");
+    const [pagandoJuros, setPagandoJuros] = useState<string>("0");
+    const [pagandoMulta, setPagandoMulta] = useState<string>("0");
     const [excluindoId, setExcluindoId] = useState<number | null>(null);
 
     const [filtros, setFiltros] = useState({
@@ -186,6 +192,21 @@ export default function DespesasFixasPage() {
         fetchData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filtros]);
+
+    useEffect(() => {
+        if (pagandoId !== null) {
+            const despesa = despesas.find(d => d.id === pagandoId);
+            if (despesa) {
+                const original = despesa.valor;
+                const desconto = parseFloat(pagandoDesconto.replace(",", ".")) || 0;
+                const juros = parseFloat(pagandoJuros.replace(",", ".")) || 0;
+                const multa = parseFloat(pagandoMulta.replace(",", ".")) || 0;
+                
+                const final = original - desconto + juros + multa;
+                setPagandoValor(final.toFixed(2).replace(".", ","));
+            }
+        }
+    }, [pagandoDesconto, pagandoJuros, pagandoMulta, pagandoId, despesas]);
 
     const handleSubmit = async () => {
         if (!form.valor || !form.credor) {
@@ -344,6 +365,9 @@ export default function DespesasFixasPage() {
     const handlePagar = (d: DespesaFixa) => {
         setPagandoId(d.id);
         setPagandoValor(d.valor.toString());
+        setPagandoDesconto("0");
+        setPagandoJuros("0");
+        setPagandoMulta("0");
         if (contas.length > 0) {
             setPagandoContaId(contas[0].id.toString());
         } else {
@@ -367,10 +391,17 @@ export default function DespesasFixasPage() {
             return;
         }
 
+        const descontoNumerico = parseFloat(pagandoDesconto.replace(",", ".")) || 0;
+        const jurosNumerico = parseFloat(pagandoJuros.replace(",", ".")) || 0;
+        const multaNumerico = parseFloat(pagandoMulta.replace(",", ".")) || 0;
+
         const { error } = await supabase.from("despesas_fixas").update({
             status: "pago",
             data_pagamento: new Date().toISOString().split("T")[0],
             valor_pago: valorNumerico,
+            desconto: descontoNumerico,
+            juros: jurosNumerico,
+            multa: multaNumerico,
             conta_pagamento_id: parseInt(pagandoContaId)
         }).eq("id", id);
 
@@ -727,44 +758,74 @@ export default function DespesasFixasPage() {
                                         {despesas.map((d) => {
                                             if (pagandoId === d.id) {
                                                 return (
-                                                    <tr key={d.id} className="border-t border-gray-800 bg-gray-800/30">
-                                                        <td className="px-4 py-3 text-white text-sm font-semibold">
-                                                            {d.credor} <span className="text-[10px] text-green-500 block font-normal mt-0.5">Efetuando Pagamento...</span>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-gray-400 text-sm">{d.categorias?.nome || "-"}</td>
-                                                        <td className="px-4 py-3 text-gray-400 text-sm">{d.empresas ? `${d.empresas.nome_fantasia}${d.empresas.cidade ? ` - ${d.empresas.cidade}` : ''}` : "-"}</td>
-                                                        <td className="px-4 py-3 text-center text-gray-400 text-sm font-mono">{d.competencia || "-"}</td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            <div className="inline-flex items-center gap-1">
-                                                                <span className="text-xs text-gray-500">R$</span>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={pagandoValor} 
-                                                                    onChange={(e) => setPagandoValor(e.target.value)} 
-                                                                    className="bg-gray-800 border border-gray-700 text-white px-2 py-1 text-sm font-mono w-24 text-right focus:outline-none focus:border-green-500"
-                                                                    placeholder="Valor Pago"
-                                                                />
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center text-gray-400 text-sm">{d.periodicidade.toUpperCase()}</td>
-                                                        <td className="px-4 py-3 text-center">
-                                                            <span className="text-xs px-2 py-1 bg-yellow-900/30 text-yellow-400 border border-yellow-800/50">
-                                                                PAGANDO
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            <div className="flex flex-col items-end gap-1">
-                                                                <select 
-                                                                    value={pagandoContaId} 
-                                                                    onChange={(e) => setPagandoContaId(e.target.value)} 
-                                                                    className="bg-gray-800 border border-gray-700 text-white px-2 py-1 text-xs focus:outline-none mb-1 max-w-[150px]"
-                                                                >
-                                                                    <option value="">Selecione a Conta...</option>
-                                                                    {contas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                                                                </select>
-                                                                <div className="flex gap-2">
-                                                                    <button onClick={() => handleConfirmarPagamento(d.id)} className="text-green-500 hover:text-green-400 text-[10px] font-bold">CONFIRMAR</button>
-                                                                    <button onClick={() => setPagandoId(null)} className="text-gray-400 hover:text-gray-300 text-[10px] font-medium">CANCELAR</button>
+                                                    <tr key={d.id} className="border-t border-gray-800 bg-gray-800/40">
+                                                        <td colSpan={8} className="px-6 py-4">
+                                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                                                {/* Infos da despesa */}
+                                                                <div>
+                                                                    <span className="text-[10px] text-gray-500 block uppercase font-bold">CREDOR</span>
+                                                                    <span className="text-white font-bold text-sm">{d.credor}</span>
+                                                                    <span className="text-xs text-gray-400 block font-mono mt-0.5">Valor Original: {formatarValor(d.valor)}</span>
+                                                                </div>
+
+                                                                {/* Form de Juros/Multas/Desconto */}
+                                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-1 max-w-2xl">
+                                                                    <div>
+                                                                        <label className="text-[10px] text-gray-400 block mb-1">DESCONTO (-)</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={pagandoDesconto} 
+                                                                            onChange={(e) => setPagandoDesconto(e.target.value)} 
+                                                                            className="bg-gray-900 border border-gray-700 text-white px-2 py-1 text-sm font-mono w-full text-right focus:border-green-500 focus:outline-none"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-[10px] text-gray-400 block mb-1">JUROS (+)</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={pagandoJuros} 
+                                                                            onChange={(e) => setPagandoJuros(e.target.value)} 
+                                                                            className="bg-gray-900 border border-gray-700 text-white px-2 py-1 text-sm font-mono w-full text-right focus:border-green-500 focus:outline-none"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-[10px] text-gray-400 block mb-1">MULTA (+)</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={pagandoMulta} 
+                                                                            onChange={(e) => setPagandoMulta(e.target.value)} 
+                                                                            className="bg-gray-900 border border-gray-700 text-white px-2 py-1 text-sm font-mono w-full text-right focus:border-green-500 focus:outline-none"
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="text-[10px] text-yellow-500 block mb-1 font-bold">VALOR PAGO (LÍQUIDO)</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={pagandoValor} 
+                                                                            onChange={(e) => setPagandoValor(e.target.value)} 
+                                                                            className="bg-gray-900 border border-yellow-600 text-yellow-400 px-2 py-1 text-sm font-mono font-bold w-full text-right focus:outline-none"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Conta e Ações */}
+                                                                <div className="flex flex-col items-end gap-2">
+                                                                    <select 
+                                                                        value={pagandoContaId} 
+                                                                        onChange={(e) => setPagandoContaId(e.target.value)} 
+                                                                        className="bg-gray-900 border border-gray-700 text-white px-3 py-1.5 text-xs w-48 focus:outline-none focus:border-green-500"
+                                                                    >
+                                                                        <option value="">Selecione a Conta...</option>
+                                                                        {contas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                                                                    </select>
+                                                                    <div className="flex gap-3">
+                                                                        <button onClick={() => handleConfirmarPagamento(d.id)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-xs font-bold rounded">
+                                                                            CONFIRMAR
+                                                                        </button>
+                                                                        <button onClick={() => setPagandoId(null)} className="bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1 text-xs font-semibold rounded">
+                                                                            CANCELAR
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </td>
