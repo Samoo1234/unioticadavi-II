@@ -28,6 +28,32 @@ interface Despesa {
     status: string;
 }
 
+interface DBDespesaFixa {
+    id: number;
+    credor: string | null;
+    valor: number;
+    valor_pago: number | null;
+    status: string;
+    data_pagamento: string | null;
+    data_vencimento: string | null;
+    empresa_id: number | null;
+    categoria_id: number | null;
+    empresas: { id: number; nome_fantasia: string; cidade?: string } | null;
+    categorias: { id: number; nome: string } | null;
+}
+
+interface DBDespesaDiversa {
+    id: number;
+    nome: string | null;
+    valor: number;
+    status: string;
+    data: string;
+    empresa_id: number | null;
+    categoria_id: number | null;
+    empresas: { id: number; nome_fantasia: string; cidade?: string } | null;
+    categorias: { id: number; nome: string } | null;
+}
+
 export default function ExtratoDespesasPage() {
     const [despesas, setDespesas] = useState<Despesa[]>([]);
     const [empresas, setEmpresas] = useState<Empresa[]>([]);
@@ -43,14 +69,6 @@ export default function ExtratoDespesasPage() {
         busca: "",
     });
 
-    useEffect(() => {
-        fetchRefs();
-    }, []);
-
-    useEffect(() => {
-        fetchData();
-    }, [filtros]);
-
     const fetchRefs = async () => {
         const [empRes, catRes] = await Promise.all([
             supabase.from("empresas").select("id, nome_fantasia, cidade").eq("ativo", true).order("cidade"),
@@ -64,7 +82,7 @@ export default function ExtratoDespesasPage() {
         setLoading(true);
 
         // Buscar despesas fixas
-        let queryFixas = supabase.from("despesas_fixas").select("*, empresas(id, nome_fantasia, cidade), categorias(id, nome)");
+        let queryFixas = supabase.from("despesas_fixas").select("*, empresas(id, nome_fantasia, cidade), categorias(id, nome), contas_pagamento(id, nome)");
         if (filtros.empresa_id) queryFixas = queryFixas.eq("empresa_id", parseInt(filtros.empresa_id));
         if (filtros.categoria_id) queryFixas = queryFixas.eq("categoria_id", parseInt(filtros.categoria_id));
 
@@ -81,7 +99,7 @@ export default function ExtratoDespesasPage() {
 
         // Processar fixas
         if (fixasRes.data && (filtros.tipo === "todos" || filtros.tipo === "fixa")) {
-            fixasRes.data.forEach((d: any) => {
+            fixasRes.data.forEach((d: DBDespesaFixa) => {
                 despesasUnificadas.push({
                     id: `fixa-${d.id}`,
                     tipo: "fixa",
@@ -90,8 +108,8 @@ export default function ExtratoDespesasPage() {
                     empresa: d.empresas ? `${d.empresas.nome_fantasia}${d.empresas.cidade ? ` - ${d.empresas.cidade}` : ''}` : "-",
                     empresa_id: d.empresa_id,
                     categoria_id: d.categoria_id,
-                    valor: d.valor,
-                    data: d.data_vencimento || new Date().toISOString().split("T")[0],
+                    valor: d.status === "pago" && d.valor_pago !== null ? d.valor_pago : d.valor,
+                    data: (d.status === "pago" && d.data_pagamento) ? d.data_pagamento : (d.data_vencimento || new Date().toISOString().split("T")[0]),
                     status: d.status,
                 });
             });
@@ -99,7 +117,7 @@ export default function ExtratoDespesasPage() {
 
         // Processar diversas
         if (diversasRes.data && (filtros.tipo === "todos" || filtros.tipo === "diversa")) {
-            diversasRes.data.forEach((d: any) => {
+            diversasRes.data.forEach((d: DBDespesaDiversa) => {
                 despesasUnificadas.push({
                     id: `diversa-${d.id}`,
                     tipo: "diversa",
@@ -128,6 +146,15 @@ export default function ExtratoDespesasPage() {
         setDespesas(resultado);
         setLoading(false);
     };
+
+    useEffect(() => {
+        fetchRefs();
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filtros]);
 
     const formatarValor = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const formatarData = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("pt-BR");
@@ -197,7 +224,7 @@ export default function ExtratoDespesasPage() {
                     </div>
                     <div className="bg-gray-900 border border-gray-800 p-4">
                         <div className="text-xs text-gray-500">DESPESAS DIVERSAS</div>
-                        <div className="text-lg font-bold text-purple-400">{formatarValor(totalDiversas)}</div>
+                        <div className="text-lg font-bold text-pink-400">{formatarValor(totalDiversas)}</div>
                     </div>
                     <div className="bg-gray-900 border border-gray-800 p-4">
                         <div className="text-xs text-gray-500">TOTAL GERAL</div>
@@ -251,7 +278,7 @@ export default function ExtratoDespesasPage() {
                                     <tr key={d.id} className="border-t border-gray-800 hover:bg-gray-800/50">
                                         <td className="px-4 py-3 text-gray-400 text-sm">{formatarData(d.data)}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`text-xs px-2 py-1 ${d.tipo === "fixa" ? "bg-blue-900/50 text-blue-400" : "bg-purple-900/50 text-purple-400"}`}>
+                                            <span className={`text-xs px-2 py-1 ${d.tipo === "fixa" ? "bg-blue-900/50 text-blue-400" : "bg-pink-900/50 text-pink-400"}`}>
                                                 {d.tipo.toUpperCase()}
                                             </span>
                                         </td>
