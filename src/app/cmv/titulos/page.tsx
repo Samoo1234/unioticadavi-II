@@ -244,6 +244,21 @@ export default function TitulosPage() {
         }
     };
 
+    const handleEditar = (t: Titulo) => {
+        setEditandoId(t.id);
+        setForm({
+            fornecedor_id: t.fornecedor_id ? t.fornecedor_id.toString() : "",
+            empresa_id: t.empresa_id ? t.empresa_id.toString() : "",
+            tipo_id: t.tipo_id ? t.tipo_id.toString() : "",
+            tipo: t.tipo || "pagar",
+            valor: t.valor.toString().replace(".", ","),
+            data_vencimento: t.data_vencimento,
+            observacao: t.observacao || "",
+        });
+        setIsMultiplos(false);
+        setShowForm(true);
+    };
+
     const formatarValor = (valor: number) => valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const formatarData = (data: string) => new Date(data + "T00:00:00").toLocaleDateString("pt-BR");
 
@@ -437,6 +452,7 @@ export default function TitulosPage() {
                                             {t.status === "pendente" && (
                                                 <button onClick={() => handlePagar(t.id)} className="text-green-500 hover:text-green-400 text-xs font-medium mr-2">PAGAR</button>
                                             )}
+                                            <button onClick={() => handleEditar(t)} className="text-blue-500 hover:text-blue-400 text-xs font-medium mr-2">EDITAR</button>
                                             <button onClick={() => handleExcluir(t.id)} className="text-red-500 hover:text-red-400 text-xs font-medium">EXCLUIR</button>
                                         </td>
                                     </tr>
