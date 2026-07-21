@@ -465,7 +465,14 @@ function AgendamentoContent() {
     const handleImprimirAgendamentoCompleto = () => {
         const tipos: TipoFinanceiroAgendamento[] = ["Particular", "Convênio", "Campanha", "Exames", "Revisão", "Retorno"];
         const resumoPorTipo = tipos.map(t => {
-            const filtrados = registrosFin.filter(r => r.tipo === t);
+            const filtrados = registrosFin.filter(r => {
+                if (r.tipo !== t) return false;
+                if (t === "Exames") {
+                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                    return r.situacao === "Efetivação" && totalPag > 0;
+                }
+                return true;
+            });
             return { tipo: t, qtd: filtrados.length, total: filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0) };
         }).filter(t => t.qtd > 0);
 
@@ -473,6 +480,10 @@ function AgendamentoContent() {
         const resumoPorPagamento = formas.map(f => {
             let count = 0; let total = 0;
             registrosFin.forEach(r => {
+                if (r.tipo === "Exames") {
+                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                    if (r.situacao !== "Efetivação" || totalPag === 0) return;
+                }
                 const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
                 if (pagamentosDessaForma.length > 0) { count += pagamentosDessaForma.length; total += pagamentosDessaForma.reduce((acc, p) => acc + p.valor, 0); }
             });
@@ -485,7 +496,13 @@ function AgendamentoContent() {
             unidade: empresaFiltro?.nomeFantasia || "TODAS AS UNIDADES",
             operador: "ADMIN", medico: medicoDoDia.nome || "",
             resumoPorTipo, resumoPorPagamento,
-            registros: registrosFin.map(r => ({
+            registros: registrosFin.filter(r => {
+                if (r.tipo === "Exames") {
+                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                    return r.situacao === "Efetivação" && totalPag > 0;
+                }
+                return true;
+            }).map(r => ({
                 pacienteNome: r.pacienteNome, valorTotal: r.valorTotal, tipo: r.tipo || "",
                 pagamentos: r.pagamentos, situacao: r.situacao || "", observacoes: r.observacoes
             }))

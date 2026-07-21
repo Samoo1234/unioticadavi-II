@@ -46,7 +46,14 @@ export default function AgendaFinanceiro({
                                         let totalQtd = 0;
                                         let totalValor = 0;
                                         const rows = tipos.map(t => {
-                                            const filtrados = registrosFin.filter(r => r.tipo === t);
+                                            const filtrados = registrosFin.filter(r => {
+                                                if (r.tipo !== t) return false;
+                                                if (t === "Exames") {
+                                                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                                                    return r.situacao === "Efetivação" && totalPag > 0;
+                                                }
+                                                return true;
+                                            });
                                             const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
                                             totalQtd += filtrados.length;
                                             totalValor += total;
@@ -99,6 +106,10 @@ export default function AgendaFinanceiro({
                                         let count = 0;
                                         let total = 0;
                                         registrosFin.forEach(r => {
+                                            if (r.tipo === "Exames") {
+                                                const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                                                if (r.situacao !== "Efetivação" || totalPag === 0) return;
+                                            }
                                             const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
                                             if (pagamentosDessaForma.length > 0) {
                                                 count += pagamentosDessaForma.length;
