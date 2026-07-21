@@ -122,7 +122,7 @@ export default function AgendaFinanceiro({
 
             {/* Tabela Financeira */}
             <div className="bg-gray-900 border border-gray-800 overflow-x-auto">
-                <table className="w-full min-w-[1200px]">
+                <table className="w-full min-w-300">
                     <thead>
                         <tr className="border-b border-gray-800 text-left bg-gray-800/30">
                             <th className="px-4 py-3 text-xs font-bold text-gray-400 uppercase">Cliente</th>
