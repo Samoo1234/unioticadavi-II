@@ -467,11 +467,8 @@ function AgendamentoContent() {
         const resumoPorTipo = tipos.map(t => {
             const filtrados = registrosFin.filter(r => {
                 if (r.tipo !== t) return false;
-                if (t === "Exames") {
-                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
-                    return r.situacao === "Efetivação" && totalPag > 0;
-                }
-                return true;
+                const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                return r.valorTotal > 0 ? (totalPag === r.valorTotal) : true;
             });
             return { tipo: t, qtd: filtrados.length, total: filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0) };
         }).filter(t => t.qtd > 0);
@@ -480,10 +477,11 @@ function AgendamentoContent() {
         const resumoPorPagamento = formas.map(f => {
             let count = 0; let total = 0;
             registrosFin.forEach(r => {
-                if (r.tipo === "Exames") {
-                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
-                    if (r.situacao !== "Efetivação" || totalPag === 0) return;
-                }
+                if (!r.tipo) return;
+                const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                const isCompatible = r.valorTotal > 0 ? (totalPag === r.valorTotal) : true;
+                if (!isCompatible) return;
+
                 const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
                 if (pagamentosDessaForma.length > 0) { count += pagamentosDessaForma.length; total += pagamentosDessaForma.reduce((acc, p) => acc + p.valor, 0); }
             });
@@ -497,11 +495,9 @@ function AgendamentoContent() {
             operador: "ADMIN", medico: medicoDoDia.nome || "",
             resumoPorTipo, resumoPorPagamento,
             registros: registrosFin.filter(r => {
-                if (r.tipo === "Exames") {
-                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
-                    return r.situacao === "Efetivação" && totalPag > 0;
-                }
-                return true;
+                if (!r.tipo) return false;
+                const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                return r.valorTotal > 0 ? (totalPag === r.valorTotal) : true;
             }).map(r => ({
                 pacienteNome: r.pacienteNome, valorTotal: r.valorTotal, tipo: r.tipo || "",
                 pagamentos: r.pagamentos, situacao: r.situacao || "", observacoes: r.observacoes

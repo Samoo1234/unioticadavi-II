@@ -48,11 +48,8 @@ export default function AgendaFinanceiro({
                                         const rows = tipos.map(t => {
                                             const filtrados = registrosFin.filter(r => {
                                                 if (r.tipo !== t) return false;
-                                                if (t === "Exames") {
-                                                    const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
-                                                    return r.situacao === "Efetivação" && totalPag > 0;
-                                                }
-                                                return true;
+                                                const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                                                return r.valorTotal > 0 ? (totalPag === r.valorTotal) : true;
                                             });
                                             const total = filtrados.reduce((acc, r) => acc + (r.valorTotal || 0), 0);
                                             totalQtd += filtrados.length;
@@ -106,10 +103,11 @@ export default function AgendaFinanceiro({
                                         let count = 0;
                                         let total = 0;
                                         registrosFin.forEach(r => {
-                                            if (r.tipo === "Exames") {
-                                                const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
-                                                if (r.situacao !== "Efetivação" || totalPag === 0) return;
-                                            }
+                                            if (!r.tipo) return;
+                                            const totalPag = r.pagamentos?.reduce((acc, p) => acc + (p.valor || 0), 0) || 0;
+                                            const isCompatible = r.valorTotal > 0 ? (totalPag === r.valorTotal) : true;
+                                            if (!isCompatible) return;
+
                                             const pagamentosDessaForma = r.pagamentos.filter(p => p.forma === f);
                                             if (pagamentosDessaForma.length > 0) {
                                                 count += pagamentosDessaForma.length;
