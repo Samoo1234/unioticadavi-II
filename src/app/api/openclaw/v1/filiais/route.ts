@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { validateOpenClawKey, logOpenClawAudit } from '@/lib/openclaw/auth'
+import { validateOpenClawKey, logOpenClawAudit, getClientIp } from '@/lib/openclaw/auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const supabase = getServiceClient()
     const { data: empresas, error } = await supabase
         .from('empresas')
-        .select('id, nome_fantasia, razao_social, cnpj, cidade, endereco, telefone, configuracao_horarios')
+        .select('id, nome_fantasia, cidade, telefone, timezone')
         .eq('ativo', true)
         .order('nome_fantasia')
 
@@ -31,11 +31,9 @@ export async function GET(request: NextRequest) {
         .map(e => ({
             id: e.id,
             nome: e.nome_fantasia,
-            razaoSocial: e.razao_social,
-            cnpj: e.cnpj,
             cidade: e.cidade,
             telefone: e.telefone,
-            timezone: 'America/Sao_Paulo'
+            timezone: e.timezone || 'America/Sao_Paulo'
         }))
 
     await logOpenClawAudit({
@@ -46,6 +44,7 @@ export async function GET(request: NextRequest) {
         scopeUsed: 'read',
         statusCode: 200,
         action: 'listar_filiais',
+        ipAddress: getClientIp(request),
         payload: { total: filiais.length }
     })
 

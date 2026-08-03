@@ -1,11 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import crypto from 'crypto'
 import {
     validateOpenClawKey,
     logOpenClawAudit,
-    checkIdempotencyKey,
-    storeIdempotencyKey,
-    sanitizePayloadLGPD
+    getClientIp
 } from '@/lib/openclaw/auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -15,7 +14,7 @@ function getServiceClient() {
     return createClient(supabaseUrl, supabaseServiceKey)
 }
 
-// GET — Query appointments for date/branch
+// GET — List appointments with PII masked
 export async function GET(request: NextRequest) {
     const auth = await validateOpenClawKey(request, 'read')
     if (!auth.isValid) {
@@ -39,12 +38,7 @@ export async function GET(request: NextRequest) {
             hora,
             tipo,
             status,
-            created_at,
-            pacientes (
-                id,
-                nome,
-                telefone
-            )
+            created_at
         `)
         .eq('empresa_id', Number(empresaId))
         .eq('data', data)
@@ -54,20 +48,6 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Erro ao listar agendamentos' }, { status: 500 })
     }
 
-    // Sanitize PII for general GET endpoint
-    const listSanitizada = (agendamentos || []).map((a: any) => ({
-        id: a.id,
-        data: a.data,
-        horario: a.hora,
-        tipo: a.tipo,
-        status: a.status,
-        paciente: a.pacientes ? sanitizePayloadLGPD({
-            id: a.pacientes.id,
-            nome: a.pacientes.nome,
-            telefone: a.pacientes.telefone
-        }) : null
-    }))
-
     await logOpenClawAudit({
         requestId: auth.requestId,
         apiKeyId: auth.apiKeyId,
@@ -76,119 +56,81 @@ export async function GET(request: NextRequest) {
         scopeUsed: 'read',
         statusCode: 200,
         action: 'listar_agendamentos',
-        payload: { empresaId, data, total: listSanitizada.length }
+        ipAddress: getClientIp(request),
+        payload: { empresaId, data, total: (agendamentos || []).length }
     })
 
-    return NextResponse.json({ agendamentos: listSanitizada })
+    return NextResponse.json({ agendamentos })
 }
 
-// POST — Create appointment (requires schedule scope & Idempotency-Key support)
+// POST — Create appointment via atomic RPC create_agendamento_idempotent
 export async function POST(request: NextRequest) {
     const auth = await validateOpenClawKey(request, 'schedule')
     if (!auth.isValid) {
         return NextResponse.json({ error: auth.error }, { status: auth.statusCode })
     }
 
-    const idempotencyKey = request.headers.get('idempotency-key')
-    if (idempotencyKey) {
-        const cached = await checkIdempotencyKey(idempotencyKey, '/api/openclaw/v1/agendamentos')
-        if (cached) return cached
-    }
+    const idempotencyKey = request.headers.get('idempotency-key') || `auto_${crypto.randomUUID()}`
 
     try {
-        const body = await request.json()
+        const rawBodyText = await request.text()
+        let body: any = {}
+        try {
+            body = JSON.parse(rawBodyText)
+        } catch {
+            return NextResponse.json({ error: 'Corpo da requisição deve ser um JSON válido' }, { status: 400 })
+        }
+
         const { empresaId, data, horario, pacienteNome, pacienteTelefone, tipo, observacoes } = body
 
         if (!empresaId || !data || !horario || !pacienteNome || !pacienteTelefone) {
-            const errResp = { error: 'Preencha os campos obrigatórios: empresaId, data, horario, pacienteNome, pacienteTelefone' }
-            return NextResponse.json(errResp, { status: 400 })
+            return NextResponse.json({
+                error: 'Campos obrigatórios ausentes: empresaId, data, horario, pacienteNome, pacienteTelefone'
+            }, { status: 400 })
         }
 
+        // Validate date format YYYY-MM-DD
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+            return NextResponse.json({ error: 'Formato de data inválido. Use YYYY-MM-DD' }, { status: 422 })
+        }
+
+        // Compute request hash
+        const requestHash = crypto.createHash('sha256').update(rawBodyText).digest('hex')
         const supabase = getServiceClient()
 
-        // 1. Check for schedule conflict
-        const { data: conflito } = await supabase
-            .from('agendamentos')
-            .select('id')
-            .eq('empresa_id', empresaId)
-            .eq('data', data)
-            .eq('hora', horario)
-            .neq('status', 'cancelado')
-            .maybeSingle()
+        // Invoke atomic RPC
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('create_agendamento_idempotent', {
+            p_api_key_id: auth.apiKeyId,
+            p_idempotency_key: idempotencyKey,
+            p_method: 'POST',
+            p_endpoint: '/api/openclaw/v1/agendamentos',
+            p_request_hash: requestHash,
+            p_empresa_id: Number(empresaId),
+            p_data: data,
+            p_hora: horario,
+            p_paciente_nome: pacienteNome.trim(),
+            p_paciente_telefone: pacienteTelefone.trim(),
+            p_tipo: tipo || 'Consulta',
+            p_observacoes: observacoes || 'Criado via OpenClaw API'
+        })
 
-        if (conflito) {
-            const conflictResp = { error: 'Este horário já está ocupado. Escolha outro slot livre.' }
-            return NextResponse.json(conflictResp, { status: 409 })
-        }
+        if (rpcError) {
+            const errMsg = rpcError.message || ''
 
-        // 2. Find or register patient
-        const nomeTrimmed = pacienteNome.trim()
-        const telefoneTrimmed = pacienteTelefone.trim()
-
-        const { data: pacienteExistente } = await supabase
-            .from('pacientes')
-            .select('id')
-            .ilike('nome', nomeTrimmed)
-            .eq('telefone', telefoneTrimmed)
-            .maybeSingle()
-
-        let pacienteId: string
-        if (pacienteExistente) {
-            pacienteId = pacienteExistente.id
-        } else {
-            const { data: novoPaciente, error: errPaciente } = await supabase
-                .from('pacientes')
-                .insert({ nome: nomeTrimmed, telefone: telefoneTrimmed })
-                .select('id')
-                .single()
-
-            if (errPaciente || !novoPaciente) {
-                return NextResponse.json({ error: 'Erro ao registrar paciente' }, { status: 500 })
+            if (errMsg.includes('IDEMPOTENCY_CONFLICT')) {
+                return NextResponse.json({ error: 'Idempotency-Key reutilizada com payload diferente' }, { status: 409 })
             }
-            pacienteId = novoPaciente.id
-        }
-
-        // 3. Create appointment with default status 'aguardando'
-        const { data: novoAgd, error: errAgd } = await supabase
-            .from('agendamentos')
-            .insert({
-                paciente_id: pacienteId,
-                empresa_id: empresaId,
-                data: data,
-                hora: horario,
-                tipo: tipo || 'Consulta',
-                status: 'aguardando',
-                observacoes: observacoes || 'Agendado via OpenClaw Davi'
-            })
-            .select('id, data, hora, status')
-            .single()
-
-        if (errAgd) {
-            if (errAgd.code === '23505') { // Postgres Unique Constraint error code
-                return NextResponse.json({ error: 'Conflito de horário detectado no banco de dados.' }, { status: 409 })
+            if (errMsg.includes('IDEMPOTENCY_PENDING')) {
+                return NextResponse.json({ error: 'Requisição com esta Idempotency-Key já está em processamento' }, { status: 409 })
             }
-            return NextResponse.json({ error: 'Erro ao salvar agendamento' }, { status: 500 })
-        }
-
-        const successResponse = {
-            success: true,
-            agendamentoId: novoAgd.id,
-            status: novoAgd.status,
-            mensagem: 'Agendamento criado com sucesso! Status inicial: aguardando.',
-            detalhes: {
-                empresaId,
-                data: novoAgd.data,
-                horario: novoAgd.hora,
-                timezone: 'America/Sao_Paulo'
+            if (errMsg.includes('23505') || errMsg.includes('idx_agendamentos_empresa_data_hora_unico')) {
+                return NextResponse.json({ error: 'Horário já ocupado nesta filial.' }, { status: 409 })
             }
+
+            console.error('[OpenClaw Agendamentos POST] Erro RPC:', rpcError)
+            return NextResponse.json({ error: 'Erro ao processar agendamento' }, { status: 500 })
         }
 
-        // Save Idempotency Key if provided
-        if (idempotencyKey) {
-            await storeIdempotencyKey(idempotencyKey, '/api/openclaw/v1/agendamentos', 201, successResponse)
-        }
-
-        // Audit Log
         await logOpenClawAudit({
             requestId: auth.requestId,
             apiKeyId: auth.apiKeyId,
@@ -197,13 +139,14 @@ export async function POST(request: NextRequest) {
             scopeUsed: 'schedule',
             statusCode: 201,
             action: 'criar_agendamento',
-            payload: body
+            ipAddress: getClientIp(request),
+            payload: { empresaId, data, horario, tipo }
         })
 
-        return NextResponse.json(successResponse, { status: 201 })
+        return NextResponse.json(rpcResult, { status: 201 })
 
     } catch (error: any) {
-        console.error('[OpenClaw Agendamento POST] Erro:', error)
-        return NextResponse.json({ error: 'Erro interno ao processar agendamento' }, { status: 500 })
+        console.error('[OpenClaw Agendamentos POST] Erro fatal:', error)
+        return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
     }
 }

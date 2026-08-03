@@ -1,12 +1,36 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { validateOpenClawKey, logOpenClawAudit } from '@/lib/openclaw/auth'
+import { validateOpenClawKey, logOpenClawAudit, getClientIp } from '@/lib/openclaw/auth'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 function getServiceClient() {
     return createClient(supabaseUrl, supabaseServiceKey)
+}
+
+function parseSlotsFromConfig(config: any): string[] {
+    if (!config || !config.turnos || !Array.isArray(config.turnos)) return []
+    const interval = config.intervaloMinutos || 30
+
+    const slots: string[] = []
+    for (const turno of config.turnos) {
+        if (!turno.ativo || !turno.inicio || !turno.fim) continue
+        const [hIn, mIn] = turno.inicio.split(':').map(Number)
+        const [hOut, mOut] = turno.fim.split(':').map(Number)
+
+        let startMin = hIn * 60 + mIn
+        const endMin = hOut * 60 + mOut
+
+        while (startMin + interval <= endMin) {
+            const h = Math.floor(startMin / 60)
+            const m = startMin % 60
+            const slotStr = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+            slots.push(slotStr)
+            startMin += interval
+        }
+    }
+    return slots
 }
 
 export async function GET(request: NextRequest) {
@@ -21,13 +45,16 @@ export async function GET(request: NextRequest) {
     const empresaIdParam = searchParams.get('empresaId')
 
     const dataInicial = aPartirDeParam ? aPartirDeParam : new Date().toISOString().split('T')[0]
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataInicial)) {
+        return NextResponse.json({ error: 'Formato de data inválido. Use YYYY-MM-DD' }, { status: 422 })
+    }
 
     const supabase = getServiceClient()
 
-    // 1. Fetch active companies/branches
+    // Query active companies
     let query = supabase
         .from('empresas')
-        .select('id, nome_fantasia, cidade, configuracao_horarios, telefone')
+        .select('id, nome_fantasia, cidade, configuracao_horarios, telefone, timezone')
         .eq('ativo', true)
 
     if (empresaIdParam) {
@@ -37,20 +64,9 @@ export async function GET(request: NextRequest) {
     const { data: empresas, error: errEmpresas } = await query
 
     if (errEmpresas || !empresas || empresas.length === 0) {
-        await logOpenClawAudit({
-            requestId: auth.requestId,
-            apiKeyId: auth.apiKeyId,
-            endpoint: '/api/openclaw/v1/proxima-disponibilidade',
-            method: 'GET',
-            scopeUsed: 'read',
-            statusCode: 404,
-            action: 'buscar_proxima_disponibilidade',
-            payload: { a_partir_de: dataInicial, cidade: cidadeParam, empresaId: empresaIdParam }
-        })
         return NextResponse.json({ error: 'Nenhuma filial encontrada' }, { status: 404 })
     }
 
-    // Filter by city if specified
     const empresasFiltradas = empresas.filter(e => {
         if (!e.cidade) return false
         if (cidadeParam && !e.cidade.toLowerCase().includes(cidadeParam.toLowerCase())) return false
@@ -58,75 +74,98 @@ export async function GET(request: NextRequest) {
     })
 
     if (empresasFiltradas.length === 0) {
-        return NextResponse.json({ error: 'Nenhuma filial disponível para os filtros fornecidos' }, { status: 404 })
+        return NextResponse.json({ error: 'Nenhuma filial disponível para os filtros informados' }, { status: 404 })
     }
 
-    // 2. Iterate day by day starting from dataInicial up to 14 days
     const startDate = new Date(dataInicial + 'T00:00:00')
+    const now = new Date()
+    const todayStr = now.toISOString().split('T')[0]
+    const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
+    interface CandidateSlot {
+        empresa: any
+        data: string
+        horario: string
+        datetime: Date
+    }
+
+    let earliestCandidate: CandidateSlot | null = null
 
     for (let dayOffset = 0; dayOffset < 14; dayOffset++) {
         const currentDate = new Date(startDate)
         currentDate.setDate(startDate.getDate() + dayOffset)
         const dateStr = currentDate.toISOString().split('T')[0]
-        const dayOfWeekIndex = currentDate.getDay() // 0 = Sun, 1 = Mon ...
 
         for (const empresa of empresasFiltradas) {
-            const config = empresa.configuracao_horarios as any || {}
-            
-            // Check day config from configuracao_horarios (or default standard slots)
-            const diaConfig = config.diasDisponiveis?.find((d: any) => d.data === dateStr)
-            
-            // Standard slots fallback if not explicitly disabled
-            let slotsValidos: string[] = []
-            if (diaConfig && diaConfig.horarios && diaConfig.horarios.length > 0) {
-                slotsValidos = diaConfig.horarios
-            } else if (dayOfWeekIndex !== 0) { // Skip Sundays by default unless defined
-                slotsValidos = ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '14:00', '14:30', '15:00', '15:30', '16:00']
+            const config = empresa.configuracao_horarios as any
+            const slotsBase = parseSlotsFromConfig(config)
+            if (slotsBase.length === 0) continue // Skip branches without valid turnos config
+
+            // Filter past slots on current day
+            let slotsValidos = slotsBase
+            if (dateStr === todayStr) {
+                slotsValidos = slotsBase.filter(h => h > currentHHMM)
             }
 
             if (slotsValidos.length === 0) continue
 
-            // Fetch occupied slots for this empresa + date
-            const { data: agendamentos } = await supabase
+            // Fetch occupied slots for active appointments (aguardando & confirmado)
+            const { data: agendamentos, error: errAgd } = await supabase
                 .from('agendamentos')
                 .select('hora')
                 .eq('empresa_id', empresa.id)
                 .eq('data', dateStr)
-                .neq('status', 'cancelado')
+                .in('status', ['aguardando', 'confirmado'])
+
+            if (errAgd) continue
 
             const ocupados = new Set((agendamentos || []).map(a => a.hora.substring(0, 5)))
             const disponivel = slotsValidos.find(slot => !ocupados.has(slot))
 
             if (disponivel) {
-                const responseData = {
-                    filial: {
-                        id: empresa.id,
-                        nome: empresa.nome_fantasia,
-                        cidade: empresa.cidade,
-                        telefone: empresa.telefone
-                    },
-                    data: dateStr,
-                    horario: disponivel,
-                    timezone: 'America/Sao_Paulo'
+                const candidateDatetime = new Date(`${dateStr}T${disponivel}:00`)
+                if (!earliestCandidate || candidateDatetime < earliestCandidate.datetime) {
+                    earliestCandidate = {
+                        empresa,
+                        data: dateStr,
+                        horario: disponivel,
+                        datetime: candidateDatetime
+                    }
                 }
-
-                await logOpenClawAudit({
-                    requestId: auth.requestId,
-                    apiKeyId: auth.apiKeyId,
-                    endpoint: '/api/openclaw/v1/proxima-disponibilidade',
-                    method: 'GET',
-                    scopeUsed: 'read',
-                    statusCode: 200,
-                    action: 'buscar_proxima_disponibilidade',
-                    payload: { a_partir_de: dataInicial, cidade: cidadeParam, resultado: responseData }
-                })
-
-                return NextResponse.json(responseData)
             }
         }
+
+        // Return immediately if we found the earliest candidate up to this day
+        if (earliestCandidate) break
     }
 
-    return NextResponse.json({
-        error: 'Nenhum horário disponível encontrado nos próximos 14 dias'
-    }, { status: 404 })
+    if (!earliestCandidate) {
+        return NextResponse.json({ error: 'Nenhum horário disponível encontrado nos próximos 14 dias' }, { status: 404 })
+    }
+
+    const responseData = {
+        filial: {
+            id: earliestCandidate.empresa.id,
+            nome: earliestCandidate.empresa.nome_fantasia,
+            cidade: earliestCandidate.empresa.cidade,
+            telefone: earliestCandidate.empresa.telefone
+        },
+        data: earliestCandidate.data,
+        horario: earliestCandidate.horario,
+        timezone: earliestCandidate.empresa.timezone || 'America/Sao_Paulo'
+    }
+
+    await logOpenClawAudit({
+        requestId: auth.requestId,
+        apiKeyId: auth.apiKeyId,
+        endpoint: '/api/openclaw/v1/proxima-disponibilidade',
+        method: 'GET',
+        scopeUsed: 'read',
+        statusCode: 200,
+        action: 'buscar_proxima_disponibilidade',
+        ipAddress: getClientIp(request),
+        payload: { a_partir_de: dataInicial, cidade: cidadeParam, resultado: responseData }
+    })
+
+    return NextResponse.json(responseData)
 }

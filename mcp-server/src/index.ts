@@ -4,25 +4,56 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { z } from 'zod';
+import crypto from 'crypto';
 
 const API_BASE_URL = process.env.OTICA_API_BASE_URL || 'http://localhost:3000/api/openclaw/v1';
-const API_KEY = process.env.OPENCLAW_API_KEY || 'default_openclaw_secret_key';
+const API_KEY = process.env.OPENCLAW_RAW_API_KEY || process.env.OPENCLAW_API_KEY;
+
+// Boot check: Exit cleanly if no API key is configured
+if (!API_KEY) {
+  console.error('[MCP Error] Variável OPENCLAW_RAW_API_KEY ou OPENCLAW_API_KEY não configurada no ambiente.');
+  process.exit(1);
+}
 
 async function apiFetch(endpoint: string, options: RequestInit = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    'x-openclaw-api-key': API_KEY,
-    ...(options.headers || {}),
-  };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-  const response = await fetch(url, { ...options, headers });
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || `Erro HTTP ${response.status}`);
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-openclaw-api-key': API_KEY!,
+      ...(options.headers || {}),
+    };
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+
+    const rawText = await response.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      throw new Error(`Resposta do servidor não é um JSON válido. Status HTTP: ${response.status}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `Erro HTTP ${response.status}`);
+    }
+
+    return data;
+  } catch (err: any) {
+    if (err.name === 'AbortError') {
+      throw new Error('Tempo limite da requisição HTTP excedido (10s)');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return data;
 }
 
 const server = new Server(
@@ -37,17 +68,20 @@ const server = new Server(
   }
 );
 
-// Define available MCP tools for Davi / OpenClaw
+const CONFIRMATION_NOTICE = ' (Nota: A exigência de aprovação humana definitiva depende da política de execução configurada no host do OpenClaw).';
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
         name: 'buscar_proxima_disponibilidade',
-        description: 'Pesquisa automaticamente o próximo dia e horário vago disponível para consulta em uma filial.',
+        description: 'Pesquisa automaticamente o próximo dia e horário vago disponível para consulta.' + CONFIRMATION_NOTICE,
+        readOnlyHint: true,
+        idempotentHint: true,
         inputSchema: {
           type: 'object',
           properties: {
-            a_partir_de: { type: 'string', description: 'Data inicial para buscar no formato YYYY-MM-DD (ex: 2026-08-03)' },
+            a_partir_de: { type: 'string', description: 'Data inicial no formato YYYY-MM-DD (ex: 2026-08-03)' },
             cidade: { type: 'string', description: 'Filtro opcional de cidade (ex: Mantena)' },
             empresaId: { type: 'number', description: 'ID opcional da filial' },
           },
@@ -55,12 +89,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'listar_filiais',
-        description: 'Lista todas as filiais e lojas ativas da Ótica Vision com fusos horários.',
+        description: 'Lista todas as filiais e lojas ativas da Ótica Vision.' + CONFIRMATION_NOTICE,
+        readOnlyHint: true,
+        idempotentHint: true,
         inputSchema: { type: 'object', properties: {} },
       },
       {
         name: 'consultar_horarios_disponiveis',
-        description: 'Consulta horários livres e ocupados para uma filial e data específica.',
+        description: 'Consulta horários livres e ocupados para uma filial e data específica.' + CONFIRMATION_NOTICE,
+        readOnlyHint: true,
+        idempotentHint: true,
         inputSchema: {
           type: 'object',
           required: ['empresaId', 'data'],
@@ -72,7 +110,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'criar_agendamento',
-        description: 'Cria um novo agendamento de consulta/exame no sistema após confirmação explícita do paciente.',
+        description: 'Cria um novo agendamento de consulta/exame no sistema.' + CONFIRMATION_NOTICE,
+        destructiveHint: false,
+        idempotentHint: true,
         inputSchema: {
           type: 'object',
           required: ['empresaId', 'data', 'horario', 'pacienteNome', 'pacienteTelefone'],
@@ -81,15 +121,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             data: { type: 'string', description: 'Data no formato YYYY-MM-DD' },
             horario: { type: 'string', description: 'Horário no formato HH:MM (ex: 09:30)' },
             pacienteNome: { type: 'string', description: 'Nome completo do paciente' },
-            pacienteTelefone: { type: 'string', description: 'Telefone com DDD do paciente' },
+            pacienteTelefone: { type: 'string', description: 'Telefone do paciente' },
             tipo: { type: 'string', enum: ['Consulta', 'Exame', 'Retorno'], description: 'Tipo do agendamento' },
-            idempotencyKey: { type: 'string', description: 'Chave de idempotência opcional para evitar duplicidade' }
+            idempotencyKey: { type: 'string', description: 'Chave de idempotência opcional' },
           },
         },
       },
       {
         name: 'alterar_status_agendamento',
-        description: 'Altera o status de um agendamento existente (ex: confirmado, recusado, cancelado, realizado).',
+        description: 'Altera o status de um agendamento existente.' + CONFIRMATION_NOTICE,
+        destructiveHint: true,
+        idempotentHint: false,
         inputSchema: {
           type: 'object',
           required: ['agendamentoId', 'status'],
@@ -104,7 +146,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Handle tool executions
 server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
   const { name, arguments: args } = request.params;
 
@@ -134,10 +175,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
     }
 
     if (name === 'criar_agendamento') {
-      const headers: Record<string, string> = {};
-      if (args?.idempotencyKey) {
-        headers['Idempotency-Key'] = String(args.idempotencyKey);
-      }
+      const idempotencyKey = args?.idempotencyKey || crypto.randomUUID();
+      const headers: Record<string, string> = {
+        'Idempotency-Key': String(idempotencyKey),
+      };
 
       const result = await apiFetch('/agendamentos', {
         method: 'POST',
@@ -179,7 +220,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('Servidor MCP OpenClaw rodando via Stdio!');
+  console.error('Servidor MCP OpenClaw inicializado via Stdio.');
 }
 
 main().catch((err) => {
