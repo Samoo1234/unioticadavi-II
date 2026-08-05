@@ -131,6 +131,36 @@ export default function UsersAdminPage() {
         }
     };
 
+    const handleResetPassword = async (profile: Profile) => {
+        const newPassword = window.prompt(
+            `Digite a nova senha para "${profile.full_name || 'Usuário'}":`
+        );
+        if (!newPassword) return;
+
+        if (newPassword.length < 6) {
+            alert('A senha deve ter no mínimo 6 caracteres.');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/users/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: profile.id, newPassword })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Erro ao alterar senha');
+            }
+
+            alert(`Senha do usuário "${profile.full_name || 'Usuário'}" alterada com sucesso!`);
+        } catch (error: any) {
+            alert('Erro ao alterar senha: ' + error.message);
+        }
+    };
+
     const handleDeleteUser = async (profile: Profile) => {
         const confirmed = window.confirm(
             `Tem certeza que deseja EXCLUIR o usuário "${profile.full_name || 'Sem Nome'}"?\n\nEssa ação é irreversível.`
@@ -223,6 +253,12 @@ export default function UsersAdminPage() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right space-x-3">
+                                        <button
+                                            onClick={() => handleResetPassword(profile)}
+                                            className="text-amber-500 hover:text-amber-400 font-black transition-colors"
+                                        >
+                                            ALTERAR SENHA
+                                        </button>
                                         <button
                                             onClick={() => setEditingProfile(profile)}
                                             className="text-emerald-500 hover:text-emerald-400 font-black transition-colors"
